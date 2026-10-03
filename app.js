@@ -12,7 +12,7 @@ const storage = {
   },
 };
 
-const STORAGE_PREFIX = "openlink";
+const STORAGE_PREFIX = "openme";
 const LEGACY_STORAGE_PREFIX = "wemint";
 
 function storageKey(name) {
@@ -392,7 +392,7 @@ function ensureShortCode(link, existingCodes = new Set()) {
 
 function getShortLink(link) {
   const code = String(link.shortCode || "").trim();
-  return code ? `https://op4n.link/${escapeHTML(code)}` : "";
+  return code ? `https://op4n.me/${escapeHTML(code)}` : "";
 }
 
 function isChoiceType(type) {
@@ -608,13 +608,13 @@ function renderProfile() {
   const username = profile.username ? profile.username.trim() : "";
   if (elements.previewLinkbarUser) {
     elements.previewLinkbarUser.textContent = username
-      ? `op4n.link/${username}`
-      : "op4n.link/yours";
+      ? `op4n.me/${username}`
+      : "op4n.me/yours";
   }
   if (elements.previewCta) {
     elements.previewCta.textContent = username
-      ? `OP4N.LINK/${username.toUpperCase()}/>_SHARE ANYTHING`
-      : "OP4N.LINK/YOU/>_SHARE ANYTHING";
+      ? `OP4N.ME/${username.toUpperCase()}/>_SHARE ANYTHING`
+      : "OP4N.ME/YOU/>_SHARE ANYTHING";
   }
 }
 
@@ -1408,7 +1408,7 @@ function renderPreviewInboxForm() {
     ${fieldsHTML}
     <button class="sheet-submit" type="button" disabled>Send</button>
     <p class="sheet-footnote">
-      By submitting, you agree to op4n.link's T&amp;Cs and Privacy Notice.
+      By submitting, you agree to op4n.me's T&amp;Cs and Privacy Notice.
     </p>
   `;
   wirePreviewDatePickers();
@@ -2104,7 +2104,7 @@ async function downloadPreviewImage() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "openlink-preview.png";
+        link.download = "openme-preview.png";
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -2142,7 +2142,7 @@ function initEvents() {
     const willExpand = elements.adPanel.classList.contains("is-collapsed");
     elements.adPanel.classList.toggle("is-collapsed", !willExpand);
     elements.adPanel.classList.toggle("is-expanded", willExpand);
-    sessionStorage.setItem("openlink_ad_collapsed", String(!willExpand));
+    sessionStorage.setItem("openme_ad_collapsed", String(!willExpand));
   };
   if (elements.adPanelClose && elements.adPanel) {
     elements.adPanelClose.addEventListener("click", (e) => {
@@ -2177,7 +2177,7 @@ function initEvents() {
       event.preventDefault();
       const email = elements.adContactEmail?.value.trim() || "";
       const message = elements.adContactMessage?.value.trim() || "";
-      const subject = encodeURIComponent("OP4N.LINK contact");
+      const subject = encodeURIComponent("OP4N.ME contact");
       const body = encodeURIComponent(`Email: ${email}\n\nMessage:\n${message}`);
       if (elements.adContactNote) {
         elements.adContactNote.textContent = "Opening your email app...";
@@ -2723,7 +2723,7 @@ function initNavAccordion() {
 function initBannerCycle() {
   const messages = [
     "OP4N.COM",
-    "OP4N.LINK/MAKE LINKS SHARABLE",
+    "OP4N.ME/MAKE LINKS SHARABLE",
     "OP4N.ME/MAKE THEM OPEN YOURS",
     "OPEN FOR BESPOKE LINK DESIGN",
   ];

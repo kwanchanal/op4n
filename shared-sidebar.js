@@ -15,17 +15,11 @@
       title: "Our Product",
       items: [
         {
-          id: "op4n-link",
-          label: "op4n.link",
+          id: "op4n-me",
+          label: "op4n.me",
           icon: "badge",
           href: "index.html"
         },
-        {
-          id: "op4n-me",
-          label: "op4n.me",
-          icon: "chat",
-          locked: true
-        }
       ]
     },
     {
@@ -91,5 +85,5 @@
     `;
   }
 
-  document.querySelectorAll("[data-openlink-sidebar]").forEach(renderSidebar);
+  document.querySelectorAll("[data-openme-sidebar]").forEach(renderSidebar);
 })();

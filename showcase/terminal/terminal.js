@@ -4,7 +4,7 @@
 
   const commands = {
     'ls -la': 'total 24\ndrwxr-xr-x  6 user staff  192 Apr 19 10:30 .\ndrwxr-xr-x  3 user staff   96 Apr 19 10:25 ..\n-rw-r--r--  1 user staff 1024 Apr 19 10:30 index.html\n-rw-r--r--  1 user staff 2048 Apr 19 10:28 styles.css',
-    'pwd': '/Users/user/projects/op4n-link',
+    'pwd': '/Users/user/projects/op4n-me',
     'whoami': 'developer',
     'date': new Date().toString(),
     'help': 'Available commands: ls -la, pwd, whoami, date, clear, help',

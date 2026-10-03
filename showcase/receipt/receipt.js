@@ -66,7 +66,7 @@
         const heading = document.querySelector(".receipt-brand h1");
         if (heading) heading.textContent = state.title || "receipt";
         elements.totalText.textContent = formatPrice(totalAmount());
-        elements.shareUrlInput.value = `op4n.link/${state.shareId}`;
+        elements.shareUrlInput.value = `op4n.me/${state.shareId}`;
       }
 
       function createCellInput(value, className, onInput) {

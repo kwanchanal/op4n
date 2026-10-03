@@ -1,13 +1,13 @@
-# AGENTS.md - openlink / op4n.link
+# AGENTS.md - openme / op4n.me
 
 This repository contains product description, frontend, and product logic for
-**openlink**, a link creation and management dashboard for shortening URLs,
+**openme**, a link creation and management dashboard for shortening URLs,
 generating QR codes, tracking engagement, and managing branded link pages.
 
-Primary product domain: `op4n.link`
-Repository remote: `https://github.com/kwanchanal/openlink`
+Primary product domain: `op4n.me`
+Repository remote: `https://github.com/kwanchanal/op4n`
 
-# op4n.link
+# op4n.me
 
 ## Our Product
 
@@ -18,11 +18,11 @@ We make links short, shareable, trackable — and truly yours
 
 ## Product Description
 
-op4n.link is a link management platform that turns any URL into a short, shareable, and trackable link  
+op4n.me is a link management platform that turns any URL into a short, shareable, and trackable link  
 
-op4n.link treats links-first as a core product — enabling identity, analytics, and extensibility into richer digital experiences.  
+op4n.me treats links-first as a core product — enabling identity, analytics, and extensibility into richer digital experiences.  
 
-op4n.link is built for creators, businesses, and builders, helps them distribute content better, understand your audience, and own your digital presence.
+op4n.me is built for creators, businesses, and builders, helps them distribute content better, understand your audience, and own your digital presence.
 
 ---
 
@@ -68,14 +68,14 @@ Reference products:
 - `app.bitly.com` for managed dashboard patterns, analytics, branding, and link lifecycle tooling
 
 When reference copy in the PRD says "Bitly", treat it as reference language unless
-the task explicitly asks to reproduce that wording. Prefer `openlink` and
-`op4n.link` in product UI and implementation.
+the task explicitly asks to reproduce that wording. Prefer `openme` and
+`op4n.me` in product UI and implementation.
 
 ---
 
 ## Product Promise
 
-openlink helps users turn long URLs into short, shareable links in seconds, then
+openme helps users turn long URLs into short, shareable links in seconds, then
 manage those links from a centralized dashboard.
 
 Core promise:
@@ -118,7 +118,7 @@ items must include hover tooltips and keyboard-accessible labels.
 
 Routes:
 - `+` Create new: opens creation context menu
-- `/discover`: Discover what openlink provides
+- `/discover`: Discover what openme provides
 - `/links`: default landing page after login
 - `/trackings`: analytics for links
 - `/launchpads`: link-in-bio / branded landing pages
@@ -145,7 +145,7 @@ action.
 
 Required elements:
 - Destination URL input with placeholder `https://example.com/my-long-url`
-- Fixed free-tier domain indicator for `op4n.link` with a lock icon
+- Fixed free-tier domain indicator for `op4n.me` with a lock icon
 - Usage indicator, for example: "You can create 3 more links this month."
 - Primary CTA to create a short link
 - Optional unchecked checkbox: "Also create a QR Code for this link"
@@ -202,7 +202,7 @@ Show a quota alert near the top:
 Fields:
 - Destination URL, required URL text input
 - Keyboard hint: "Hit Enter to create"
-- Short link domain dropdown, defaulting to `op4n.link` for openlink
+- Short link domain dropdown, defaulting to `op4n.me` for openme
 - Back-half input for optional custom slug
 - Slash separator between domain and back-half to preview the final short link
 - Generate button for AI-generated back-half suggestions
@@ -302,7 +302,7 @@ Requirements:
 
 ## Core Journey 4: AI Assist
 
-A floating right-hand "openlink Assist" panel may appear in the dashboard.
+A floating right-hand "openme Assist" panel may appear in the dashboard.
 
 Free-tier behavior:
 - Panel is visible but gated
@@ -314,7 +314,7 @@ Free-tier behavior:
 - "View plans" CTA deep-links to the correct pricing page
 - Chat input is present but gated
 - Placeholder: "Paste a long URL to shorten, or ask about your link performance..."
-- Disclaimer: "openlink Assist can make mistakes. Always verify your links, codes, and data."
+- Disclaimer: "openme Assist can make mistakes. Always verify your links, codes, and data."
 - Dismissible with close button
 
 Use a sparkle icon consistently to signal AI-gated functionality.
@@ -326,7 +326,7 @@ Use a sparkle icon consistently to signal AI-gated functionality.
 The right column of the home dashboard may include an onboarding widget.
 
 Widget content:
-- "Hi [First Name], get started with openlink"
+- "Hi [First Name], get started with openme"
 - Circular progress indicator, for example 67%
 - Checklist:
   - Link shortened: completed
@@ -370,7 +370,7 @@ Route: `/links`
 User goal: review, manage, organize, and act on all short links.
 
 Page requirements:
-- Heading: "openlink Links" or equivalent product-native heading
+- Heading: "openme Links" or equivalent product-native heading
 - "Create link" button anchored top-right
 - Load full link inventory on arrival
 - Default view shows Active links only
@@ -451,9 +451,9 @@ Suggested link shape:
   "id": "link_123",
   "title": "Spring campaign",
   "destinationUrl": "https://example.com/my-long-url",
-  "shortDomain": "op4n.link",
+  "shortDomain": "op4n.me",
   "backHalf": "spring-campaign",
-  "shortUrl": "https://op4n.link/spring-campaign",
+  "shortUrl": "https://op4n.me/spring-campaign",
   "status": "active",
   "createdAt": "2026-04-13T00:00:00.000Z",
   "tags": [],
@@ -555,7 +555,7 @@ Must not do:
 
 - Prioritize speed over perfection, but keep the product flow coherent.
 - Ship the simplest working path first: create a short link and copy it.
-- Keep naming product-native: openlink / `op4n.link`.
+- Keep naming product-native: openme / `op4n.me`.
 - Treat Bitly and shorturl.at as references, not brand names to copy by default.
 - Keep UI behavior modular around link records, quotas, filters, and feature gates.
 - Favor inline, contextual upgrade prompts over disruptive paywalls.

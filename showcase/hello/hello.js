@@ -718,7 +718,7 @@
 
     function saveCanvasImage() {
       drawHello(ctx, canvas.width, canvas.height, { ...state, progress: 1 });
-      downloadDataUrl(canvas.toDataURL("image/png"), "openlink-hello.png");
+      downloadDataUrl(canvas.toDataURL("image/png"), "openme-hello.png");
       setProgress(state.progress);
     }
 
@@ -737,7 +737,7 @@
       recorder.addEventListener("stop", () => {
         const blob = new Blob(chunks, { type: "video/webm" });
         const url = URL.createObjectURL(blob);
-        downloadDataUrl(url, "openlink-hello.webm");
+        downloadDataUrl(url, "openme-hello.webm");
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       });
       recorder.start();
@@ -801,7 +801,7 @@
     resize();
   }
 
-  window.OpenlinkHello = { mount: mountHelloMaker };
+  window.OpenmeHello = { mount: mountHelloMaker };
 
   document.querySelectorAll("[data-hello-maker]").forEach((root) => {
     mountHelloMaker(root);
