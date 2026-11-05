@@ -12,51 +12,62 @@ The current product source of truth is the Notion Product Plan:
 `https://app.notion.com/p/Product-Plan-3f6927fb12d48117b80dd65e6e959d40`
 
 If this repository, an older brief, or prototype copy conflicts with that plan,
-pause and resolve the product decision before shipping. The Feature Inventory is
-future implementation context, not authorization to build those features during
-Prototype Cleanup.
+pause and resolve the product decision before shipping. The implementation
+backlog is the Notion Feature Inventory:
 
-## Current execution phase: Prototype Cleanup
+`https://app.notion.com/p/3f6927fb12d480e6b49fdb465fde8a0f?v=3f6927fb12d480939944000c9de7f86a`
 
-The active work is cleanup of the existing prototype before production R1
-implementation. Work through the Prototype Cleanup board in numeric ID order.
-Set a card to `Doing` before starting it, and to `Done` only after its acceptance
-criteria have been verified. Record a short implementation summary in `Results`;
-record unresolved questions or blockers in the card notes.
+A card appearing in Feature Inventory is context, not authorization to implement
+the entire board. Work only on the explicitly assigned card or approved ordered
+batch.
 
-The currently authorized Prototype Improvement pass extends Cleanup through ID
-30 only:
+## Current execution phase: R1 Production Preparation
 
-- ID 25 updates this execution boundary.
-- IDs 26–29 are presentation and interaction improvements.
-- ID 30 is the final verification and stop condition.
+Prototype Cleanup is complete. The verified handoff is the `main` branch of
+`https://github.com/kwanchanal/op4n`, published at
+`https://kwanchanal.github.io/op4n/`.
 
-Stop after Cleanup ID 30 passes. Do not continue into Feature Inventory or
-production implementation unless the user explicitly instructs you to do so.
+The next step is to approve an implementation order for R1, then execute the
+Feature Inventory in that order. Until an order or individual card is explicitly
+assigned, limit work to handoff documentation, verification, and changes the
+user specifically requests. Do not start the whole backlog automatically.
 
-During this phase you may:
+For assigned Feature Inventory work:
 
-- Refactor the frontend and remove confirmed legacy-only code.
-- Separate fixtures, configuration, rendering, and service interfaces.
-- Prepare reusable components and replaceable data/service adapters.
-- Implement deterministic frontend states, validation, accessibility, and
-  responsive behavior required by the Cleanup board.
-- Use deterministic mock records and responses from dedicated fixture/config
-  files when a UI depends on a future API or backend.
+- Set the card from `Draft` to `Doing` before implementation.
+- Satisfy its Details and Acceptance Criteria.
+- Verify the result proportionately to risk.
+- Record the implementation evidence in `Results`.
+- Move it to `Done` only after verification.
+- Stop and surface any highlighted `PENDING` product decision rather than
+  choosing policy on the user's behalf.
 
-During this phase do not implement:
+Mock data must stay clearly identified and separate from production behavior.
+When a UI depends on an API that has not been implemented, keep deterministic
+fixtures in dedicated config files and access them through replaceable service
+interfaces.
 
-- A production database or persistence layer.
-- A production redirect service.
-- Authentication, account ownership, or authorization.
-- Latest Links, exact-search, click-recording, or moderation APIs.
-- Functional Registered-owner features, including real QR generation/download.
-- Paid plans, pricing, quotas, Premium, or Upgrade behavior.
+## Approved R1 foundation
 
-Mock data must be clearly identified in code. It must not be described as
-persisted, safety-approved, delivered to an Admin, or returned by production.
-Keep mock Created Link data separate from curated Example fixtures, and access
-future backend-shaped data through replaceable service interfaces.
+- Frontend: the current GitHub Pages prototype.
+- DNS and redirect edge: Cloudflare, with `op4n.me` and `op4n.com` controlled
+  by the owner.
+- Production data: Supabase Free Postgres in the Singapore region.
+- API convention: versioned REST endpoints under `/api/v1`.
+- Redirect behavior: HTTP 302 with `Cache-Control: no-store`.
+- R1 starts without a cache or queue; add either only from measured need.
+- Delivery: GitHub Actions and Supabase CLI.
+- Initial operating target: about 1,000 users, 1,000 new links per day, about
+  10,000 redirects per day, and a 100,000-redirect/day spike.
+- Ownership: a one-person business operated in an individual capacity.
+- Launch inboxes remain pending: `support@op4n.me`, `abuse@op4n.me`, and
+  `ops@op4n.me`. Email-dependent launch and policy cards remain blocked until
+  those addresses and their public wording are confirmed.
+
+Do not introduce Paid, Premium, pricing, quota, or Custom Alias Lease behavior in
+R1 unless the Product Plan and an explicitly assigned card say otherwise.
+Custom Alias Lease is an R3 direction; system-generated canonical codes are
+durable and are never reassigned.
 
 ## Product promise
 
@@ -81,13 +92,13 @@ ownership and control, not for completing the basic shortening flow.
 - Will own links created while authenticated.
 - Will eventually receive a personal library and authenticated management
   controls, including edit, disable/delete, visibility, owner analytics, and QR.
-- Registered behavior is future implementation and must remain non-functional
-  during Prototype Cleanup.
+- Registered behavior remains non-functional until its R1 card is explicitly
+  assigned and authenticated ownership is enforced.
 
 ### Admin
 
 - Will moderate unsafe or abusive links and record disable/restore reasons.
-- Production moderation systems are outside Prototype Cleanup.
+- Moderation becomes functional only through explicitly assigned R1 cards.
 
 There is no Paid plan in the current MVP scope.
 
@@ -125,8 +136,8 @@ R1 is the public Guest experience:
 - Required validation, safety states, and rate limiting.
 
 Production persistence, redirects, click recording, listing/search APIs,
-moderation, and safety enforcement belong to later Feature Inventory work, not
-this Cleanup phase.
+moderation, and safety enforcement must be implemented only through the approved
+R1 order or an explicitly assigned Feature Inventory card.
 
 ## Public-link and ownership invariants
 
@@ -139,8 +150,11 @@ this Cleanup phase.
 - UI must not imply a Paid tier while Paid plans are out of scope.
 
 Before Guest creation, clearly disclose that the link is public and read-only;
-its Title, short URL, destination URL, and aggregate click count may appear in
-Latest Links and exact search, and the Guest cannot edit or delete it later.
+its Title, short URL, safe destination summary, and aggregate click count may
+appear in Latest Links and exact search, and the Guest cannot edit or delete it
+later. Public cards may show the destination origin and approved safe path, but
+must hide query strings and fragments with an explicit marker such as `?…`.
+The full destination must not appear in public card text or HTML attributes.
 
 ## Branding and interface guidance
 
@@ -167,10 +181,10 @@ Latest Links and exact search, and the Guest cannot edit or delete it later.
 
 ## Change discipline
 
-- Prefer the smallest coherent change for the active Cleanup card.
+- Prefer the smallest coherent change for the active Feature Inventory card.
 - Audit references before removing legacy code or assets.
 - Preserve unrelated user changes in the working tree.
-- Verify each card against its acceptance criteria before marking it `Done`.
+- Verify each assigned card against its acceptance criteria before marking it `Done`.
 - Keep fixtures deterministic and do not generate random fake activity.
 - Keep future service contracts independent from their mock adapters so a later
   production API does not require rewriting UI components.
