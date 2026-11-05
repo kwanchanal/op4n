@@ -60,9 +60,11 @@ interfaces.
 - Initial operating target: about 1,000 users, 1,000 new links per day, about
   10,000 redirects per day, and a 100,000-redirect/day spike.
 - Ownership: a one-person business operated in an individual capacity.
-- Launch inboxes remain pending: `support@op4n.me`, `abuse@op4n.me`, and
-  `ops@op4n.me`. Email-dependent launch and policy cards remain blocked until
-  those addresses and their public wording are confirmed.
+- R1 uses `support@op4n.com` as the single monitored contact for support,
+  abuse reports, privacy requests, operational alerts, and escalation. Cloudflare
+  Email Routing forwards it to the founder's Gmail inbox, and the route has been
+  tested successfully. Separate support, abuse, and operations mailboxes are out
+  of scope for R1.
 
 Do not introduce Paid, Premium, pricing, quota, or Custom Alias Lease behavior in
 R1 unless the Product Plan and an explicitly assigned card say otherwise.
