@@ -161,8 +161,12 @@ const cardContract = await evaluate(`(() => {
   return {
     shortUrl: card.querySelector('.link-short-url').textContent.trim(),
     destinationLabel: card.querySelector('.link-field-label').textContent.trim(),
-    target: destination.target,
-    rel: destination.rel,
+    destinationControl: destination.tagName,
+    destinationSummary: destination.textContent.trim(),
+    fullQueryExposed: [...longCard.querySelectorAll('*')].some((item) =>
+      [item.textContent, ...[...item.attributes].map((attribute) => attribute.value)]
+        .some((value) => String(value).includes('utm_source=prototype'))
+    ),
     toolbar: Boolean(card.querySelector('.link-card-toolbar')),
     visibleClicks: card.querySelector('.public-click-count strong')?.textContent.trim(),
     registeredLabels: [...card.querySelectorAll('[data-access="registered-preview"]')].every((item) => item.getAttribute('aria-label').includes('Registered to unlock')),
@@ -174,7 +178,8 @@ const cardContract = await evaluate(`(() => {
 })()`);
 assert(cardContract.shortUrl.startsWith("https://op4n.me/"), "card uses canonical short URL");
 assert(cardContract.destinationLabel === "Destination URL :", "card labels the destination separately");
-assert(cardContract.target === "_blank" && cardContract.rel.includes("noopener") && cardContract.rel.includes("noreferrer"), "destination anchor opens safely");
+assert(cardContract.destinationControl === "BUTTON" && cardContract.destinationSummary.endsWith("?…"), "destination is a safe summary control when query details are hidden");
+assert(!cardContract.fullQueryExposed, "public card DOM does not expose destination query parameters");
 assert(cardContract.toolbar && cardContract.visibleClicks, "compact toolbar keeps Clicks visible as a number");
 assert(cardContract.registeredLabels, "all Registered previews announce their locked state");
 assert(cardContract.registeredPreviewContract, "Registered previews stay focusable and non-mutating with exact unlock tooltips");
