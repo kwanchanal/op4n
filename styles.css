@@ -1453,6 +1453,18 @@ display: block;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.public-link-card button.link-url {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .public-link-card .link-title {
   display: -webkit-box;
   min-width: 0;
