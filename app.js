@@ -138,6 +138,16 @@
     }
   }
 
+  function getPublicDestinationSummary(value) {
+    const destinationUrl = getSafeHttpUrl(value);
+    if (!destinationUrl) return "";
+
+    const parsedUrl = new URL(destinationUrl);
+    const safePath = parsedUrl.pathname || "/";
+    const hiddenSuffix = parsedUrl.search || parsedUrl.hash ? "?…" : "";
+    return `${parsedUrl.origin}${safePath}${hiddenSuffix}`;
+  }
+
   function setUrlError(message = "") {
     elements.linkUrlError.textContent = message;
     elements.linkUrl.setAttribute("aria-invalid", String(Boolean(message)));
@@ -288,8 +298,9 @@
 
     const shortLink = getShortLink(link);
     const destinationUrl = getSafeHttpUrl(getDestinationUrl(link));
+    const destinationSummary = getPublicDestinationSummary(destinationUrl);
     const safeTitle = escapeHTML(link.title || "Untitled link");
-    const safeUrl = escapeHTML(destinationUrl);
+    const safeDestinationSummary = escapeHTML(destinationSummary);
     const safeShortLink = escapeHTML(shortLink);
     const exampleLabel = link.source === "example"
       ? '<div class="link-example-label">Example</div>'
@@ -310,9 +321,9 @@
           </div>
           <div class="link-url-row link-destination-field">
             <span class="link-field-label">Destination URL :</span>
-            ${destinationUrl ? `<a class="link-url" href="${safeUrl}" target="_blank" rel="noopener noreferrer" title="${safeUrl}" aria-label="Destination URL: ${safeUrl} (opens in a new tab)">
-              ${safeUrl}
-            </a>` : '<span class="link-url">Destination unavailable</span>'}
+            ${destinationUrl ? `<button class="link-url open-destination-btn" type="button" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
+              ${safeDestinationSummary}
+            </button>` : '<span class="link-url">Destination unavailable</span>'}
           </div>
         </div>
       </div>
@@ -327,11 +338,11 @@
             <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
             <span class="sr-only action-label">Copy short link</span>
           </button>` : ""}
-          ${capabilities.guestActions.includes("open") && destinationUrl ? `<a class="guest-action-button" href="${safeUrl}" target="_blank" rel="noopener noreferrer"
-             data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Open destination" aria-label="Open destination (opens in a new tab)">
+          ${capabilities.guestActions.includes("open") && destinationUrl ? `<button class="guest-action-button open-destination-btn" type="button"
+             data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Open destination" aria-label="Open destination ${safeDestinationSummary} in a new tab">
             <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
             <span class="sr-only">Open destination</span>
-          </a>` : ""}
+          </button>` : ""}
           ${capabilities.guestActions.includes("report") ? `<button class="guest-action-button report-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Report link" aria-label="Report ${safeShortLink}">
             <span class="material-symbols-outlined" aria-hidden="true">flag</span>
             <span class="sr-only">Report link</span>
@@ -356,6 +367,13 @@
       </div>
       <div class="card-live-status" role="status" aria-live="polite"></div>
     `;
+
+    card.querySelectorAll(".open-destination-btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        const openedWindow = window.open(destinationUrl, "_blank", "noopener,noreferrer");
+        if (openedWindow) openedWindow.opener = null;
+      });
+    });
 
     card.querySelector(".copy-link-btn")?.addEventListener("click", async (event) => {
       const button = event.currentTarget;
