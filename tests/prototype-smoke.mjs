@@ -163,6 +163,7 @@ const cardContract = await evaluate(`(() => {
     destinationLabel: card.querySelector('.link-field-label').textContent.trim(),
     destinationControl: destination.tagName,
     destinationSummary: destination.textContent.trim(),
+    longDestinationSummary: longDestination.textContent.trim(),
     fullQueryExposed: [...longCard.querySelectorAll('*')].some((item) =>
       [item.textContent, ...[...item.attributes].map((attribute) => attribute.value)]
         .some((value) => String(value).includes('utm_source=prototype'))
@@ -178,7 +179,7 @@ const cardContract = await evaluate(`(() => {
 })()`);
 assert(cardContract.shortUrl.startsWith("https://op4n.me/"), "card uses canonical short URL");
 assert(cardContract.destinationLabel === "Destination URL :", "card labels the destination separately");
-assert(cardContract.destinationControl === "BUTTON" && cardContract.destinationSummary.endsWith("?…"), "destination is a safe summary control when query details are hidden");
+assert(cardContract.destinationControl === "BUTTON" && cardContract.longDestinationSummary.endsWith("?…"), "destination is a safe summary control when query details are hidden");
 assert(!cardContract.fullQueryExposed, "public card DOM does not expose destination query parameters");
 assert(cardContract.toolbar && cardContract.visibleClicks, "compact toolbar keeps Clicks visible as a number");
 assert(cardContract.registeredLabels, "all Registered previews announce their locked state");
