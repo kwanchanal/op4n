@@ -4,33 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OP4N.COM</title>
-    <link rel="icon" type="image/png" href="favicon/logo-open.png" />
+    <meta
+      name="description"
+      content="Paste, shorten, and copy a shareable op4n.me link with Op4n.com."
+    />
+    <link rel="icon" type="image/svg+xml" href="favicon/op4n-star.svg" />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200"
     />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/icon?family=Material+Icons"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"
-    />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
     <style>
       .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
     </style>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="https://tweakcn.com/live-preview.min.js"></script>
-    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="styles.css?v=id24" />
   </head>
   <body class="dashboard">
-    <div class="desktop-only-notice" aria-hidden="true">
-      <div class="desktop-only-card">Please open dashboard on desktop.</div>
-    </div>
-
     <div class="top-banner">
       <span class="banner-text" id="bannerText">OP4N.COM</span>
     </div>
@@ -38,14 +29,14 @@
     <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
 
     <div class="app-shell" id="appShell">
-      <aside class="sidebar" id="sidebar" data-openme-sidebar data-sidebar-active="op4n-me"></aside>
+      <aside class="sidebar" id="sidebar" data-openme-sidebar data-sidebar-active="create"></aside>
 
       <main class="main">
         <div class="main-scroll">
           <header class="topbar">
             <div class="topbar-row topbar-row--menu">
               <div class="topbar-actions">
-                <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Toggle sidebar">
+                <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Open navigation" aria-controls="sidebar">
                   <span class="material-symbols-outlined">menu</span>
                 </button>
               </div>
@@ -67,218 +58,47 @@
             <p>Make powerful short links that are easy to share and track</p>
           </section>
 
-          <section class="profile-card">
-            <div class="profile-avatar" id="profileAvatar">
-              <svg class="avatar-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true">
-                <path d="M360-390q-21 0-35.5-14.5T310-440q0-21 14.5-35.5T360-490q21 0 35.5 14.5T410-440q0 21-14.5 35.5T360-390Zm240 0q-21 0-35.5-14.5T550-440q0-21 14.5-35.5T600-490q21 0 35.5 14.5T650-440q0 21-14.5 35.5T600-390ZM480-160q134 0 227-93t93-227q0-24-3-46.5T786-570q-21 5-42 7.5t-44 2.5q-91 0-172-39T390-708q-32 78-91.5 135.5T160-486v6q0 134 93 227t227 93Zm0 80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm-54-715q42 70 114 112.5T700-640q14 0 27-1.5t27-3.5q-42-70-114-112.5T480-800q-14 0-27 1.5t-27 3.5ZM177-581q51-29 89-75t57-103q-51 29-89 75t-57 103Zm249-214Zm-103 36Z"/>
-              </svg>
-            </div>
-            <div class="profile-info">
-              <div class="profile-line">
-                <h2 id="profileName">Kwanchanal Geographic</h2>
-                <button class="icon-btn-sm" id="editProfileBtn" aria-label="Edit profile">
-                  <span class="material-symbols-outlined">edit</span>
-                </button>
-              </div>
-              <div class="profile-meta" id="profileMeta">Bio-native creator · Bangkok</div>
-              <div class="profile-icons" id="profileSocialIcons">
-                <button class="social-slot" type="button" data-platform="instagram" data-label="Instagram">
-                  <span class="social-emoji">📸</span>
-                  <span class="social-plus">+</span>
-                </button>
-                <button class="social-slot" type="button" data-platform="tiktok" data-label="TikTok">
-                  <span class="social-emoji">🎵</span>
-                  <span class="social-plus">+</span>
-                </button>
-                <button class="social-slot" type="button" data-platform="youtube" data-label="YouTube">
-                  <span class="social-emoji">📺</span>
-                  <span class="social-plus">+</span>
-                </button>
-                <button class="social-slot" type="button" data-platform="x" data-label="X">
-                  <span class="social-emoji">🐤</span>
-                  <span class="social-plus">+</span>
-                </button>
-                <button class="social-slot" type="button" data-platform="facebook" data-label="Facebook">
-                  <span class="social-emoji">📘</span>
-                  <span class="social-plus">+</span>
-                </button>
-                <button class="social-slot" type="button" data-platform="discord" data-label="Discord">
-                  <span class="social-emoji">🎧</span>
-                  <span class="social-plus">+</span>
-                </button>
-              </div>
-            </div>
-          </section>
-
           <section class="form-card">
-            <form class="link-entry-form" id="linkForm">
+            <form class="link-entry-form" id="linkForm" novalidate>
               <div class="field">
                 <label for="linkTitle">Title (Optional)</label>
                 <input id="linkTitle" name="title" type="text" placeholder="Name this link" />
               </div>
               <div class="field">
                 <label for="linkUrl">URL</label>
-                <input id="linkUrl" name="url" type="url" placeholder="https://example.yourlink.com" />
+                <input id="linkUrl" name="url" type="url" inputmode="url" autocomplete="url" required aria-describedby="linkUrlError" placeholder="https://example.com/my-long-url" />
+                <p class="field-error" id="linkUrlError" aria-live="polite"></p>
               </div>
               <p class="field-hint form-intro-hint">Paste Your Link Here</p>
-              <button class="cta" type="submit">Make Link</button>
+              <button class="cta" type="submit" data-access="guest-action" data-create-submit>Make Link</button>
               <p class="form-cta-note">It's Free! and No Account Needed - Make yourself better link now</p>
+              <aside class="guest-link-disclosure" aria-label="Guest link visibility">
+                <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                <p>Guest links are public and read-only. Your title, short URL, destination URL, and total click count may appear in Latest Links and exact search. You cannot edit or delete the link later.</p>
+              </aside>
+              <div class="form-feedback">
+                <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
+                <button class="form-retry-button" id="formRetryButton" type="button" hidden>Retry</button>
+              </div>
             </form>
           </section>
 
-          <section class="inbox-section" id="inboxSection">
-            <div class="inbox-section-header">
-              <button class="inbox-header-left" type="button" aria-label="Reorder inbox section">
-                <span class="material-symbols-outlined">drag_indicator</span>
-                <span>Inbox</span>
-              </button>
-              <div class="inbox-header-actions">
-                <button class="icon-btn-sm" type="button" aria-label="Add">
-                  <span class="material-symbols-outlined">add</span>
-                </button>
-                <button class="icon-btn-sm" type="button" aria-label="Download">
-                  <span class="material-symbols-outlined">download</span>
-                </button>
-                <button class="icon-btn-sm" type="button" aria-label="Help">
-                  <span class="material-symbols-outlined">help</span>
-                </button>
-                <label class="switch">
-                  <input type="checkbox" id="inboxSwitch" checked />
-                  <span class="slider"></span>
-                </label>
-              </div>
+          <section class="links" id="linksWorkspace" aria-label="Link cards">
+            <div class="link-filter-bar" aria-label="Filter links">
+              <button class="link-filter-pill is-active" type="button" data-link-filter="created" aria-pressed="true">Created Link</button>
             </div>
-
-            <div class="link-card inbox-card">
-              <div class="link-row">
-                <div class="link-info">
-                  <div class="link-title-row">
-                    <span class="link-title" id="inboxTitle">Get in touch</span>
-                    <button class="icon-btn-sm" id="inboxEditBtn" aria-label="Edit title">
-                      <span class="material-symbols-outlined">edit</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="link-meta-row">
-                <div class="link-tool-icons">
-                  <button class="icon-btn-sm layout-toggle-btn inbox-layout-btn" id="inboxLayoutBtn" aria-label="Layout">
-                    <span class="material-symbols-outlined">grid_view</span>
-                  </button>
-                  <button class="icon-btn-sm" aria-label="Email">
-                    <span class="material-symbols-outlined">mail</span>
-                  </button>
-                  <button class="icon-btn-sm" aria-label="Favorite">
-                    <span class="material-symbols-outlined">star</span>
-                  </button>
-                  <button class="icon-btn-sm" aria-label="Copy">
-                    <span class="material-symbols-outlined">content_copy</span>
-                  </button>
-                  <button class="icon-btn-sm" aria-label="Lock">
-                    <span class="material-symbols-outlined">lock</span>
-                  </button>
-                  <span class="link-stats">
-                    <span class="material-symbols-outlined">bar_chart</span>
-                    0 clicks
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="inbox-panel" id="inboxPanel">
-              <div class="layout-bar">
-                <h3>Layout</h3>
-                <button class="icon-btn" type="button" id="inboxCloseBtn" aria-label="Close panel">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
-              </div>
-              <div class="layout-tabs" role="tablist">
-                <button class="layout-tab is-active" type="button" data-inbox-tab="forms" aria-selected="true">
-                  Forms
-                </button>
-                <button class="layout-tab" type="button" data-inbox-tab="layout" aria-selected="false">
-                  Layout
-                </button>
-              </div>
-              <div class="layout-body inbox-tab-panel is-active" data-inbox-panel="forms">
-                <div class="inbox-panel-title">Forms</div>
-                <div class="inbox-panel-desc">Receive messages and collect information from your visitors</div>
-                <button class="inbox-primary-btn" id="inboxEditFormBtn" type="button">Edit form</button>
-                <div class="inbox-panel-subtitle">Incoming responses</div>
-                <div class="inbox-panel-desc">Take action in the way that suits you</div>
-                <div class="inbox-action-list">
-                  <button class="inbox-action" type="button">
-                    <span class="material-symbols-outlined">mail</span>
-                    <span>Get notified by email</span>
-                    <span class="material-symbols-outlined">chevron_right</span>
-                  </button>
-                  <button class="inbox-action" type="button">
-                    <span class="material-symbols-outlined">group</span>
-                    <span>Manage contacts</span>
-                    <span class="material-symbols-outlined">chevron_right</span>
-                  </button>
-                  <button class="inbox-action" type="button">
-                    <span class="material-symbols-outlined">hub</span>
-                    <span>Sync to other platforms</span>
-                    <span class="material-symbols-outlined">chevron_right</span>
-                  </button>
-                </div>
-              </div>
-              <div class="layout-body inbox-tab-panel" data-inbox-panel="layout">
-                <p class="muted">Choose a layout for your link</p>
-                <div class="layout-options" id="inboxLayoutBody"></div>
-              </div>
-            </div>
-          </section>
-
-          <section class="inbox-section banner-section" id="bannerSection">
-            <div class="inbox-section-header">
-              <button class="inbox-header-left" type="button" aria-label="Banner feature">
-                <span class="material-symbols-outlined">drag_indicator</span>
-                <span>Banner</span>
-              </button>
-              <div class="inbox-header-actions">
-                <button class="icon-btn-sm" id="bannerAddBtn" type="button" aria-label="Add banner item">
-                  <span class="material-symbols-outlined">add</span>
-                </button>
-                <button class="icon-btn-sm" type="button" aria-label="Help">
-                  <span class="material-symbols-outlined">help</span>
-                </button>
-                <label class="switch">
-                  <input type="checkbox" id="bannerSwitch" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-            <div class="banner-note" id="bannerRequirementNote">
-              Add at least 3 banners to enable infinite slide in preview.
-            </div>
-            <div class="banner-items" id="bannerItemsList"></div>
-          </section>
-
-          <section class="links" id="linksList"></section>
-
-          <section class="footer-toggle">
-            <div>
-              <div class="footer-title">op4n.me logo</div>
-            </div>
-            <div class="footer-actions">
-            <label class="switch">
-              <input type="checkbox" id="footerSwitch" checked />
-              <span class="slider"></span>
-            </label>
-              <div class="upgrade-tooltip" id="footerUpgradeTip">Upgrade to Unlock</div>
-            </div>
+            <div id="linksList"></div>
           </section>
         </div>
       </main>
 
       <aside class="ad-panel" id="adPanel" aria-label="openme Assist">
-        <button class="ad-sheet-handle" id="adSheetHandle" type="button" aria-label="Toggle ad panel">
+        <button class="ad-sheet-handle" id="adSheetHandle" type="button" aria-expanded="false" aria-controls="adPanelShowcase">
           <span class="ad-sheet-label">
-            <span class="material-symbols-outlined ad-sheet-arrow">keyboard_arrow_up</span>
+            <span class="material-symbols-outlined ad-sheet-arrow" aria-hidden="true">keyboard_arrow_up</span>
           </span>
         </button>
+        <div class="ad-panel-showcase" id="adPanelShowcase">
         <div class="ad-panel-header">
           <div class="ad-panel-title">
             <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
@@ -312,6 +132,7 @@
         </div>
 
         <p class="ad-contact-line">Need it fully custom-designed? We do that too. Happy to hear from you <button class="ad-contact-trigger" id="adContactTrigger" type="button">here</button></p>
+        </div>
 
         <div class="ad-contact-backdrop" id="adContactBackdrop" aria-hidden="true"></div>
         <div class="ad-contact-sheet" id="adContactSheet" aria-hidden="true">
@@ -331,305 +152,66 @@
       </aside>
     </div>
 
-
-    <div class="modal" id="profileModal" aria-hidden="true">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Edit profile</h3>
-          <button class="icon-btn" id="closeProfileBtn">
-            <span class="material-symbols-outlined">close</span>
-          </button>
+    <dialog class="capability-dialog" id="capabilityDialog" aria-labelledby="capabilityDialogTitle" aria-describedby="capabilityDialogDescription">
+      <button class="capability-dialog-close" type="button" id="capabilityDialogClose" aria-label="Close feature preview">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
+      <p class="capability-dialog-label">
+        <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+        Registered to unlock
+      </p>
+      <h2 id="capabilityDialogTitle">Feature preview</h2>
+      <p id="capabilityDialogDescription"></p>
+      <section class="qr-showcase" id="qrShowcase" aria-label="Non-live QR feature showcase" hidden>
+        <div class="qr-showcase-tabs" aria-label="QR showcase sections">
+          <button type="button" disabled aria-disabled="true">Preview</button>
+          <button type="button" disabled aria-disabled="true">Settings</button>
         </div>
-        <form id="profileForm">
-          <div class="field">
-            <label for="profileUsernameInput">Username</label>
-            <input id="profileUsernameInput" name="username" type="text" placeholder="your-username" />
-            <p class="field-hint">op4n.me/your-username</p>
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="profileImageFile">Upload profile image</label>
-              <label class="switch switch-sm">
-                <input type="checkbox" id="showProfileImage" checked />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <input id="profileImageFile" type="file" accept="image/*" />
-            <p class="field-hint" id="profileImageHint">Supports JPG, PNG, WebP.</p>
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="profileNameInput">Display name</label>
-              <label class="switch switch-sm">
-                <input type="checkbox" id="showDisplayName" checked />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <input id="profileNameInput" name="name" type="text" required />
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="profileMetaInput">Bio</label>
-              <label class="switch switch-sm">
-                <input type="checkbox" id="showBio" checked />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <textarea id="profileMetaInput" name="bio" rows="3"></textarea>
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="showSocialIcons">Social icons</label>
-              <label class="switch switch-sm">
-                <input type="checkbox" id="showSocialIcons" checked />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          <button class="primary" type="submit">Save</button>
-        </form>
+        <div class="qr-placeholder" role="img" aria-label="Non-live QR placeholder; this image does not encode a link">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+          <strong>NON-LIVE<br />SAMPLE</strong>
+        </div>
+        <p class="qr-showcase-lock"><span class="material-symbols-outlined" aria-hidden="true">lock</span> Registered to unlock</p>
+        <ul id="qrShowcaseFeatures"></ul>
+        <button class="qr-download-disabled" type="button" disabled aria-disabled="true">Download QR Code</button>
+      </section>
+      <div class="capability-dialog-actions">
+        <button type="button" class="capability-secondary" id="capabilityNotNow">Not now</button>
+        <button type="button" class="capability-primary" id="capabilitySignup">Sign Up</button>
       </div>
-    </div>
+    </dialog>
 
-    <div class="modal" id="socialModal" aria-hidden="true">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3 id="socialModalTitle">Add social link</h3>
-          <button class="icon-btn" id="closeSocialBtn">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <form id="socialForm">
-          <div class="field">
-            <label for="socialUrl">URL</label>
-            <input id="socialUrl" name="url" type="url" required placeholder="https://" />
-          </div>
-          <button class="primary" type="submit">Save</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="modal" id="bannerModal" aria-hidden="true">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3 id="bannerModalTitle">Add banner</h3>
-          <button class="icon-btn" id="closeBannerBtn" type="button" aria-label="Close banner modal">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <form id="bannerForm">
-          <div class="field">
-            <label>Image (100x100)</label>
-            <div class="thumbnail-row">
-              <button class="add-thumbnail-btn" id="bannerImagePickBtn" type="button">
-                <span class="material-symbols-outlined">add_photo_alternate</span>
-                Add image
-              </button>
-              <button class="reset-thumbnail-btn" id="bannerImageResetBtn" type="button">
-                <span class="material-symbols-outlined">refresh</span>
-                Reset
-              </button>
-              <input class="thumbnail-input" id="bannerImageInput" type="file" accept="image/*" />
-            </div>
-            <div class="thumbnail-hint" id="bannerImageHint">No image selected.</div>
-            <div class="thumbnail-preview square" id="bannerImagePreview"></div>
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="bannerHasLinkToggle">Add URL</label>
-              <label class="switch switch-sm">
-                <input id="bannerHasLinkToggle" type="checkbox" checked />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <p class="field-hint toggle-hint">Turn on to make this banner clickable.</p>
-          </div>
-          <div class="field" id="bannerLinkField">
-            <label for="bannerLinkUrl">Link URL</label>
-            <input id="bannerLinkUrl" name="url" type="url" required placeholder="https://" />
-          </div>
-          <div class="field">
-            <div class="field-head">
-              <label for="bannerPriceToggle">Show price</label>
-              <label class="switch switch-sm">
-                <input id="bannerPriceToggle" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <p class="field-hint toggle-hint">Turn on to display price text on the banner.</p>
-          </div>
-          <div class="field banner-price-fields" id="bannerPriceFields" hidden>
-            <label for="bannerPriceValue">Price</label>
-            <div class="banner-price-row">
-              <input id="bannerPriceValue" name="price" type="text" placeholder="990" />
-              <input id="bannerPriceUnit" name="unit" type="text" placeholder="THB" />
-            </div>
-          </div>
-          <button class="primary" type="submit">Save</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="modal" id="designModal" aria-hidden="true">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Design</h3>
-          <button class="icon-btn" id="closeDesignBtn">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <form id="designForm">
-            <div class="field">
-              <label for="backgroundImageFile">Upload background image</label>
-              <input id="backgroundImageFile" type="file" accept="image/*" />
-              <p class="field-hint" id="backgroundImageHint">Supports JPG, PNG, WebP.</p>
-            </div>
-            <div class="field">
-              <label for="backgroundColor">Background color</label>
-              <div class="color-input">
-                <input id="backgroundColor" name="backgroundColor" type="text" placeholder="#0b201b" />
-                <input id="backgroundColorPicker" type="color" value="#0b201b" aria-label="Pick background color" />
-              </div>
-            </div>
-            <div class="field">
-              <label for="buttonColor">Button color</label>
-              <div class="color-input">
-                <input id="buttonColor" name="buttonColor" type="text" placeholder="#75d9a0" />
-                <input id="buttonColorPicker" type="color" value="#75d9a0" aria-label="Pick button color" />
-              </div>
-            </div>
-            <div class="field">
-              <label for="profileFontColor">Profile font color</label>
-              <div class="color-input">
-                <input id="profileFontColor" name="profileFontColor" type="text" placeholder="#dff4e7" />
-                <input id="profileFontColorPicker" type="color" value="#dff4e7" aria-label="Pick profile font color" />
-              </div>
-            </div>
-            <div class="field">
-              <label for="buttonFontColor">Button font color</label>
-              <div class="color-input">
-                <input id="buttonFontColor" name="buttonFontColor" type="text" placeholder="#0b201b" />
-                <input id="buttonFontColorPicker" type="color" value="#0b201b" aria-label="Pick button font color" />
-              </div>
-            </div>
-            <div class="modal-actions">
-              <button class="ghost" type="button" id="resetDesignBtn">Reset</button>
-              <button class="primary" type="submit">Save</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal" id="cropModal" aria-hidden="true">
-      <div class="modal-card crop-modal-card">
-        <div class="modal-header">
-          <h3 id="cropTitle">Crop image</h3>
-          <button class="icon-btn" id="closeCropBtn" aria-label="Close crop">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="crop-body">
-          <img id="cropImage" alt="Crop preview" />
-        </div>
-        <div class="modal-actions">
-          <button class="ghost" id="cropCancelBtn" type="button">Cancel</button>
-          <button class="primary" id="cropSaveBtn" type="button">Save</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal inbox-form-modal" id="inboxFormModal" aria-hidden="true">
-      <div class="modal-card inbox-form-card">
-        <div class="modal-header inbox-form-header">
-          <button class="icon-btn inbox-back-btn" id="closeInboxFormBtn" type="button" aria-label="Back">
-            <span class="material-symbols-outlined">arrow_back</span>
-          </button>
-          <h3>Add a form</h3>
-          <button class="icon-btn" id="dismissInboxFormBtn" type="button" aria-label="Close">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="inbox-form-headline">
-          <span>Information</span>
-          <span>Required</span>
-        </div>
-        <div class="inbox-form-rows" id="inboxFormRows"></div>
-        <button class="inbox-primary-btn" id="inboxAddFieldBtn" type="button">
-          <span class="material-symbols-outlined">add</span>
-          Add field
-        </button>
-        <div class="inbox-form-footer">
-          <button class="primary inbox-done-btn" id="inboxFormDoneBtn" type="button">Done</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal inbox-form-modal" id="inboxFieldLibraryModal" aria-hidden="true">
-      <div class="modal-card inbox-form-card inbox-library-card">
-        <div class="modal-header inbox-form-header">
-          <button class="icon-btn inbox-back-btn" id="inboxFieldLibraryBackBtn" type="button" aria-label="Back">
-            <span class="material-symbols-outlined">arrow_back</span>
-          </button>
-          <h3>Add field</h3>
-          <button class="icon-btn" id="dismissInboxFieldLibraryBtn" type="button" aria-label="Close">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
+    <dialog class="capability-dialog report-dialog" id="reportDialog" aria-labelledby="reportDialogTitle" aria-describedby="reportDialogDescription">
+      <button class="capability-dialog-close" type="button" id="reportDialogClose" aria-label="Close report form">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
+      <p class="capability-dialog-label">
+        <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+        Guest action
+      </p>
+      <h2 id="reportDialogTitle">Report this link</h2>
+      <p id="reportDialogDescription">Tell us why this public link should be reviewed. Submission is simulated during Prototype Cleanup.</p>
+      <form class="report-form" id="reportForm" novalidate>
         <div class="field">
-          <input id="inboxFieldSearchInput" type="text" placeholder="Search" />
+          <label for="reportReason">Reason</label>
+          <textarea id="reportReason" name="reason" rows="4" required aria-describedby="reportReasonError" placeholder="Describe the issue"></textarea>
+          <p class="field-error" id="reportReasonError" aria-live="polite"></p>
         </div>
-        <div class="inbox-field-library-list" id="inboxFieldLibraryList"></div>
-      </div>
-    </div>
-
-    <div class="modal inbox-form-modal" id="inboxFieldConfigModal" aria-hidden="true">
-      <div class="modal-card inbox-form-card inbox-config-card">
-        <div class="modal-header inbox-form-header">
-          <button class="icon-btn inbox-back-btn" id="inboxFieldConfigBackBtn" type="button" aria-label="Back">
-            <span class="material-symbols-outlined">arrow_back</span>
-          </button>
-          <h3>Add field</h3>
-          <button class="icon-btn" id="dismissInboxFieldConfigBtn" type="button" aria-label="Close">
-            <span class="material-symbols-outlined">close</span>
-          </button>
+        <p class="report-status" id="reportStatus" role="status" aria-live="polite"></p>
+        <div class="capability-dialog-actions">
+          <button type="button" class="capability-secondary" id="reportCancel">Cancel</button>
+          <button type="submit" class="capability-primary" id="reportSubmit">Submit report</button>
         </div>
-        <form id="inboxFieldConfigForm">
-          <div class="field">
-            <label for="inboxFieldTypeSelect">Field Type</label>
-            <select id="inboxFieldTypeSelect" name="type">
-              <option value="text">Short answer</option>
-              <option value="textarea">Paragraph</option>
-              <option value="single_choice">Single choice</option>
-              <option value="checkboxes">Checkboxes</option>
-              <option value="dropdown">Dropdown</option>
-              <option value="date">Date</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="inboxFieldLabelInput">Label</label>
-            <input id="inboxFieldLabelInput" name="label" type="text" maxlength="200" required />
-          </div>
-          <div class="field" id="inboxFieldChoicesSection" hidden>
-            <label>Choices</label>
-            <div class="inbox-choice-list" id="inboxChoiceList"></div>
-            <button class="inbox-add-choice-btn" id="inboxAddChoiceBtn" type="button">+ Add another option</button>
-          </div>
-          <div class="field">
-            <label class="inbox-required-toggle">
-              <input id="inboxFieldRequiredInput" name="required" type="checkbox" />
-              Required
-            </label>
-          </div>
-          <button class="primary inbox-done-btn" type="submit">Done</button>
-        </form>
-      </div>
-    </div>
+      </form>
+    </dialog>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="shared-sidebar.js"></script>
-    <script src="app.js"></script>
+    <script src="data/mock-api-config.js?v=id24"></script>
+    <script src="data/mock-report-config.js?v=id24"></script>
+    <script src="data/qr-showcase-config.js?v=id24"></script>
+    <script src="services/prototype-storage.js?v=id24"></script>
+    <script src="services/mock-link-service.js?v=id24"></script>
+    <script src="services/mock-report-service.js?v=id24"></script>
+    <script src="shared-sidebar.js?v=id24"></script>
+    <script src="app.js?v=id24"></script>
   </body>
 </html>

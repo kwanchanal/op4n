@@ -1,36 +1,36 @@
 (function () {
   const sections = [
     {
-      title: "About",
+      title: "Create",
+      items: [
+        {
+          id: "create",
+          label: "Create",
+          icon: "add_link",
+          href: "index.html"
+        }
+      ]
+    },
+    {
+      title: "Explore",
       items: [
         {
           id: "discover",
           label: "Discover",
           icon: "explore",
-          href: "discover.html"
-        }
-      ]
-    },
-    {
-      title: "Our Product",
-      items: [
-        {
-          id: "op4n-me",
-          label: "op4n.me",
-          icon: "badge",
-          href: "index.html"
+          locked: true
         },
-      ]
-    },
-    {
-      title: "Tools",
-      items: [
         {
           id: "trackings",
           label: "Trackings",
           icon: "insights",
           locked: true
-        },
+        }
+      ]
+    },
+    {
+      title: "Account",
+      items: [
         {
           id: "settings",
           label: "Setting",
@@ -47,42 +47,75 @@
 
   function renderItem(item, activeId) {
     const isActive = item.id === activeId;
-    const className = ["nav-link", isActive ? "is-active" : "", item.locked ? "is-locked" : ""]
+    const classes = ["nav-link", isActive ? "is-active" : "", item.locked ? "is-locked" : ""]
       .filter(Boolean)
       .join(" ");
-    const content = `${icon(item.icon, "nav-icon")}${item.label}${item.locked ? icon("lock", "lock-icon") : ""}`;
+    const content = `${icon(item.icon, "nav-icon")}<span>${item.label}</span>${
+      item.locked ? icon("lock", "lock-icon") : ""
+    }`;
 
-    if (item.href) {
-      return `<a class="${className}" href="${item.href}"${isActive ? ' aria-current="page"' : ""}>${content}</a>`;
+    if (item.locked) {
+      return `
+        <button
+          class="${classes}"
+          type="button"
+          data-unavailable="${item.label}"
+          aria-disabled="true"
+          aria-describedby="sidebarUnavailableStatus"
+        >
+          ${content}
+          <span class="sr-only">Not available yet</span>
+        </button>
+      `;
     }
 
-    return `<button class="${className}" type="button">${content}</button>`;
+    return `
+      <a class="${classes}" href="${item.href}"${isActive ? ' aria-current="page"' : ""}>
+        ${content}
+      </a>
+    `;
   }
 
   function renderSection(section, activeId) {
-    const items = section.items.map((item) => renderItem(item, activeId)).join("");
-
+    const sectionId = `nav-${section.title.toLowerCase()}`;
     return `
-      <div class="nav-section">
-        <button class="nav-title" type="button">${section.title}</button>
-        <div class="nav-items">${items}</div>
-      </div>
+      <section class="nav-section" aria-labelledby="${sectionId}">
+        <h2 class="nav-title" id="${sectionId}">${section.title}</h2>
+        <div class="nav-items">
+          ${section.items.map((item) => renderItem(item, activeId)).join("")}
+        </div>
+      </section>
     `;
   }
 
   function renderSidebar(sidebar) {
-    const activeId = sidebar.dataset.sidebarActive || "";
+    const activeId = sidebar.dataset.sidebarActive || "create";
     sidebar.innerHTML = `
-      <nav class="nav">
+      <nav class="nav" aria-label="Primary">
         ${sections.map((section) => renderSection(section, activeId)).join("")}
       </nav>
 
+      <p class="sr-only" id="sidebarUnavailableStatus" role="status" aria-live="polite">
+        Locked destinations are not available yet.
+      </p>
+
       <section class="sidebar-signup">
         <p class="signup-title">Love it?</p>
-        <button class="signup-pill" type="button">Sign Up</button>
+        <button class="signup-pill" type="button" data-signup-preview>Sign Up</button>
         <p class="signup-copy">Make Yours, It's Free</p>
       </section>
     `;
+
+    const status = sidebar.querySelector("#sidebarUnavailableStatus");
+    sidebar.querySelectorAll("[data-unavailable]").forEach((button) => {
+      button.addEventListener("click", () => {
+        status.textContent = `${button.dataset.unavailable} is not available yet.`;
+      });
+    });
+
+    sidebar.querySelector("[data-signup-preview]")?.addEventListener("click", () => {
+      status.textContent = "Sign Up is not connected during Prototype Cleanup.";
+    });
   }
 
   document.querySelectorAll("[data-openme-sidebar]").forEach(renderSidebar);
