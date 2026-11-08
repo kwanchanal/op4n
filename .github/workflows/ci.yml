@@ -50,4 +50,5 @@ jobs:
           name: op4n-release-${{ github.sha }}
           path: .ci-artifacts/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
