@@ -78,7 +78,8 @@ Every external Action is pinned to a reviewed 40-character commit SHA with a
 version comment. Checkout does not persist the GitHub credential. CI must never
 use a fork-PR secret, `pull_request_target`, hosted-environment credential, or
 write permission. `package.json` pins the semantic validators to exact versions,
-and `package-lock.json` is the sole install graph used by `npm ci`. A manifest
+requires Node 24.15.0 or newer, and `package-lock.json` is the sole install graph
+used by `npm ci`. A manifest
 without its matching lockfile fails closed.
 
 ## Semantic validation and structural policy checks
