@@ -1,0 +1,1419 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Op4n R1 API
+  version: 1.0.0-review
+  summary: R1 Guest, moderation, redirect, analytics, and readiness contracts
+  description: >-
+    Contract only. The environment project reference is a placeholder validated
+    at deployment. This file creates no function, route, CORS policy, secret,
+    database object, or infrastructure.
+  contact:
+    email: support@op4n.com
+servers:
+  - url: https://{environmentProjectRef}.supabase.co/functions/v1/op4n-api
+    description: Environment-specific Supabase Edge Function router.
+    variables:
+      environmentProjectRef:
+        default: environment-project-ref
+        description: >-
+          Placeholder only. Deployment must replace it from protected
+          environment configuration and reject placeholder or cross-environment
+          values.
+tags:
+  - name: Public links
+    description: Browser-accessible Guest creation, listing, and exact lookup.
+  - name: Reports
+    description: Browser-accessible public abuse-report intake.
+  - name: Admin
+    description: Founder-only protected review and moderation operations.
+  - name: Internal redirect
+    description: Worker-only authoritative canonical redirect lookup.
+  - name: Internal analytics
+    description: Worker-only deduplicated redirect click recording.
+  - name: Operations
+    description: Environment-scoped internal liveness and readiness checks.
+x-environment-contract:
+  productionFrontendOrigin: https://op4n.com
+  stagingFrontendOrigins:
+    - https://staging.op4n.com
+    - http://127.0.0.1:5500
+  productionRedirectTemplate: https://op4n.me/{code}
+  stagingRedirectTemplate: https://staging.op4n.me/{code}
+  routerName: op4n-api
+  projectReferencePolicy: placeholder-until-deployment-validation
+x-router-authentication:
+  functionLevelJwtVerification: disabled-for-mixed-public-and-protected-router
+  routeLevelVerificationRequired: true
+  public:
+    userJwtRequired: false
+  founderAdmin:
+    credential: Supabase Auth user JWT
+    checks:
+      - signature
+      - issuer
+      - audience
+      - expiration-and-not-before
+      - environment-context
+      - stable-subject-in-environment-founder-allowlist
+  internal:
+    credential: custom environment-scoped service credential
+    prohibitedBearerValues:
+      - Supabase Publishable key
+      - Supabase Secret key
+      - founder user JWT
+    requirements:
+      - separate-staging-and-production
+      - rotatable
+      - internal-operation-scope-only
+x-cors-policy:
+  credentialsMode: omit
+  allowCredentials: false
+  allowWildcardOrigin: false
+  reflectArbitraryOrigin: false
+  allowedMethods:
+    - GET
+    - POST
+    - OPTIONS
+  allowedRequestHeaders:
+    - Accept
+    - Content-Type
+    - Authorization
+    - Idempotency-Key
+  exposedResponseHeaders:
+    - X-Request-ID
+    - Retry-After
+    - RateLimit-Limit
+    - RateLimit-Remaining
+    - RateLimit-Reset
+    - Idempotency-Replayed
+  preflightStatus: 204
+  preflightMaxAgeSeconds: 600
+  vary:
+    - Origin
+  productionAllowedOrigins:
+    - https://op4n.com
+  stagingAllowedOrigins:
+    - https://staging.op4n.com
+    - http://127.0.0.1:5500
+  internalEndpoints: no-browser-cors
+paths:
+  /api/v1/links:
+    post:
+      tags: [Public links]
+      operationId: createGuestCanonicalLink
+      summary: Create a screened Public Guest canonical link
+      security: []
+      x-access-class: public
+      x-idempotency: required
+      x-idempotency-retention-minimum: PT24H
+      x-rate-limit-class: public-create
+      x-data-classification: public-input-protected-destination
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLinkRequest'
+            examples:
+              documentationLink:
+                value:
+                  title: Example documentation
+                  destinationUrl: https://example.com/docs
+      responses:
+        '201':
+          description: Link created after validation and safety approval.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicLinkCard' }
+              examples:
+                created: { $ref: '#/components/examples/PublicLinkCardExample' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/IdempotencyRejected' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/DestinationRejected' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+    get:
+      tags: [Public links]
+      operationId: listLatestPublicLinks
+      summary: List up to 100 newest eligible Public links
+      security: []
+      x-access-class: public
+      x-idempotency: not-applicable
+      x-rate-limit-class: public-read
+      x-data-classification: public
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/LatestLimit'
+      responses:
+        '200':
+          description: Newest-first eligible public cards.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LatestLinksResponse' }
+              examples:
+                oneItem:
+                  value:
+                    items:
+                      - canonicalCode: R1EXAMPLE
+                        displayTitle: Example documentation
+                        canonicalShortUrl: https://op4n.me/R1EXAMPLE
+                        canonicalOpenUrl: https://op4n.me/R1EXAMPLE
+                        safeDestinationSummary:
+                          origin: https://example.com
+                          path: /docs
+                          displayValue: https://example.com/docs
+                        aggregateTotalClicks: 42
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/link-lookup:
+    get:
+      tags: [Public links]
+      operationId: exactLookupPublicLink
+      summary: Normalize an approved short-link input and perform exact lookup
+      security: []
+      x-access-class: public
+      x-idempotency: not-applicable
+      x-rate-limit-class: public-search
+      x-data-classification: public
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/ExactLookupInput'
+      responses:
+        '200':
+          description: Exact eligible public card.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicLinkCard' }
+              examples:
+                found: { $ref: '#/components/examples/PublicLinkCardExample' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/PublicLinkUnavailable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/links/{code}:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    get:
+      tags: [Public links]
+      operationId: getPublicLinkCard
+      summary: Read one eligible public Created Link card
+      security: []
+      x-access-class: public
+      x-idempotency: not-applicable
+      x-rate-limit-class: public-read
+      x-data-classification: public
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Eligible public card.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicLinkCard' }
+              examples:
+                card: { $ref: '#/components/examples/PublicLinkCardExample' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/PublicLinkUnavailable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/links/{code}/reports:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    post:
+      tags: [Reports]
+      operationId: submitPublicLinkReport
+      summary: Persist a bounded public report without exposing workflow state
+      security: []
+      x-access-class: public
+      x-idempotency: required
+      x-idempotency-retention-minimum: PT24H
+      x-rate-limit-class: public-report
+      x-data-classification: sensitive-input-safe-receipt
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+            examples:
+              suspectedAbuse:
+                value:
+                  reasonCategory: abuse
+                  detail: This link appears to impersonate a service.
+      responses:
+        '202':
+          description: Report persisted; follow-up may occur asynchronously.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportReceipt' }
+              example:
+                accepted: true
+                receiptId: 00000000-0000-4000-8000-000000000010
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/PublicLinkUnavailable' }
+        '409': { $ref: '#/components/responses/IdempotencyRejected' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/links/{code}:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    get:
+      tags: [Admin]
+      operationId: getAdminLinkRecord
+      summary: Founder lookup for one canonical link and moderation state
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-idempotency: not-applicable
+      x-rate-limit-class: admin-read
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Protected founder view.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLinkRecord' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/links/{code}/disable:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    post:
+      tags: [Admin]
+      operationId: disableCanonicalLink
+      summary: Disable one link and append its audit action atomically
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-idempotency: required
+      x-idempotency-retention-minimum: PT24H
+      x-rate-limit-class: admin-mutation
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModerationMutationRequest' }
+            example:
+              reasonCode: abuse_report
+              reasonDetail: Confirmed after founder review.
+      responses:
+        '200': { $ref: '#/components/responses/ModerationMutationSucceeded' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '409': { $ref: '#/components/responses/IdempotencyRejected' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/links/{code}/restore:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    post:
+      tags: [Admin]
+      operationId: restoreCanonicalLink
+      summary: Restore one eligible link and append its audit action atomically
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-idempotency: required
+      x-idempotency-retention-minimum: PT24H
+      x-rate-limit-class: admin-mutation
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModerationMutationRequest' }
+            example:
+              reasonCode: operator_correction
+              reasonDetail: Safety approval was re-established.
+      responses:
+        '200': { $ref: '#/components/responses/ModerationMutationSucceeded' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '409': { $ref: '#/components/responses/IdempotencyRejected' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/internal/redirect-lookup:
+    post:
+      tags: [Internal redirect]
+      operationId: resolveCanonicalRedirect
+      summary: Resolve one authoritative redirect decision for the Worker
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: not-applicable-read-only
+      x-rate-limit-class: internal-redirect
+      x-data-classification: protected
+      x-cache-behavior: no-store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RedirectLookupRequest' }
+            example:
+              canonicalCode: R1EXAMPLE
+      responses:
+        '200':
+          description: Intentional redirect, unknown, or disabled decision.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedirectDecision' }
+        '400': { $ref: '#/components/responses/InternalValidationError' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '403': { $ref: '#/components/responses/InternalForbidden' }
+        '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
+        '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/InternalRateLimited' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/clicks:
+    post:
+      tags: [Internal analytics]
+      operationId: recordRedirectClick
+      summary: Record one deduplicated click after redirect response commit
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: required-event-identity
+      x-idempotency-retention-minimum: P30D
+      x-event-identity-rule: >-
+        A previously counted eventId never increments aggregates again, even
+        after a generic idempotency response record has expired.
+      x-environment-source: authenticated-internal-service-credential
+      x-retention-clock: server-recordedAt
+      x-rate-limit-class: internal-analytics
+      x-data-classification: operational-protected
+      x-cache-behavior: no-store
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClickRecordRequest' }
+            example:
+              eventId: 79cb42d9-bd78-4da8-a77f-f8d7f6ea31c2
+              canonicalCode: R1EXAMPLE
+              destinationVersion: 1
+              occurredAt: '2026-11-08T04:00:00Z'
+      responses:
+        '202':
+          description: Event accepted or replayed without duplicate counting.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClickRecordReceipt' }
+        '400': { $ref: '#/components/responses/InternalValidationError' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '403': { $ref: '#/components/responses/InternalForbidden' }
+        '409': { $ref: '#/components/responses/InternalIdempotencyRejected' }
+        '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
+        '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/InternalRateLimited' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/health/live:
+    get:
+      tags: [Operations]
+      operationId: getEnvironmentLiveness
+      summary: Check that the selected router process can respond
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: not-applicable
+      x-rate-limit-class: operational-health
+      x-data-classification: operational
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Router process is live.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LivenessResponse' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '403': { $ref: '#/components/responses/InternalForbidden' }
+        '429': { $ref: '#/components/responses/InternalRateLimited' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /api/v1/internal/health/ready:
+    get:
+      tags: [Operations]
+      operationId: getEnvironmentReadiness
+      summary: Check environment identity and required dependency readiness
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: not-applicable
+      x-rate-limit-class: operational-health
+      x-data-classification: operational
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Environment is ready for the bounded staged flow.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '403': { $ref: '#/components/responses/InternalForbidden' }
+        '429': { $ref: '#/components/responses/InternalRateLimited' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalReadinessUnavailable' }
+components:
+  securitySchemes:
+    FounderUserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: Supabase-Auth-JWT
+      description: >-
+        Supabase Auth user JWT. Route verification checks signature, issuer,
+        audience, expiration, environment, and a stable subject against the
+        environment founder allowlist. Never a static browser token.
+    InternalServiceCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: environment-scoped-service-credential
+      description: >-
+        Rotatable custom Worker credential scoped to one environment and only
+        internal operations. It is not a Supabase Publishable/Secret key or a
+        founder JWT and is prohibited in browsers.
+  parameters:
+    CanonicalCodePath:
+      name: code
+      in: path
+      required: true
+      description: Case-sensitive canonical code; never an authorization credential.
+      schema: { $ref: '#/components/schemas/CanonicalCode' }
+    ExactLookupInput:
+      name: input
+      in: query
+      required: true
+      description: >-
+        Exact canonical code, approved host/path, or full HTTPS canonical short
+        URL. Arbitrary hosts, query strings, fragments, and extra paths fail.
+      schema:
+        type: string
+        minLength: 6
+        maxLength: 256
+      examples:
+        fullUrl: { value: 'https://op4n.me/R1EXAMPLE' }
+        hostPath: { value: op4n.me/R1EXAMPLE }
+        code: { value: R1EXAMPLE }
+    LatestLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of newest-first eligible cards.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 100
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Caller-generated UUID v4 in canonical hyphenated form. Hexadecimal case
+        is accepted and normalized to lowercase before lookup. Public callers
+        must generate a fresh high-entropy random value; constants, counters,
+        timestamps, and other predictable values are prohibited. Scope is
+        environment + operation + normalized key + canonical payload digest,
+        plus founder subject for Founder/Admin calls or authenticated service
+        identity for internal calls. The raw key is never written to application
+        logs.
+      schema:
+        $ref: '#/components/schemas/IdempotencyUuidV4'
+      example: 8f14e45f-ceea-4a5f-8b9e-12f4a7c6d901
+  headers:
+    RequestId:
+      description: >-
+        New opaque identifier generated by the server for this request. The
+        server never accepts or echoes a client-selected X-Request-ID.
+      required: true
+      schema: { $ref: '#/components/schemas/RequestId' }
+    NoStore:
+      description: Responses are not stored by caches.
+      required: true
+      schema:
+        type: string
+        const: no-store
+    VaryOrigin:
+      description: Browser-accessible responses vary by exact Origin.
+      required: true
+      schema:
+        type: string
+        const: Origin
+    IdempotencyReplayed:
+      description: True when returning the stored terminal result of an identical request.
+      required: true
+      schema:
+        type: string
+        enum: ['true', 'false']
+    RetryAfter:
+      description: Non-negative seconds before a bounded retry.
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    ConditionalRetryAfter:
+      description: >-
+        Required when the 409 machine code is IDEMPOTENCY_IN_PROGRESS and
+        prohibited when it is IDEMPOTENCY_CONFLICT.
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+    RateLimitLimit:
+      description: Configured request limit for the selected policy window.
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    RateLimitRemaining:
+      description: Remaining requests in the selected policy window.
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    RateLimitReset:
+      description: Non-negative seconds until the selected policy window resets.
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+  schemas:
+    RequestId:
+      type: string
+      format: uuid
+      description: Opaque UUID generated by the server for each request.
+      examples:
+        - 00000000-0000-4000-8000-000000000001
+    IdempotencyUuidV4:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89AaBb][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$'
+      description: >-
+        Canonical hyphenated UUID v4. Uppercase hexadecimal is accepted and
+        normalized to lowercase before idempotency scope lookup.
+      examples:
+        - 8f14e45f-ceea-4a5f-8b9e-12f4a7c6d901
+    CanonicalCode:
+      type: string
+      minLength: 6
+      maxLength: 32
+      pattern: '^[A-Za-z0-9]+$'
+      description: >-
+        Accepted case-sensitive ASCII-alphanumeric wire profile. The 6–32 range
+        is not the generator length. Generation must use a separately reviewed
+        fixed length/entropy, exclude the versioned reserved system namespace,
+        remain random/non-sequential, and never recycle or reassign a code.
+      examples: [R1EXAMPLE]
+    CreateLinkRequest:
+      type: object
+      additionalProperties: false
+      required: [destinationUrl]
+      properties:
+        title:
+          type: [string, 'null']
+          maxLength: 200
+          description: Optional display title; server returns a safe fallback if absent.
+        destinationUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: '^https?://'
+          description: Protected absolute HTTP/HTTPS destination; never echoed publicly.
+    SafeDestinationSummary:
+      type: object
+      additionalProperties: false
+      required: [origin, displayValue]
+      readOnly: true
+      description: >-
+        Server-generated versioned policy output. It is never accepted from a
+        request and is never serialized from a raw database display string.
+      properties:
+        origin:
+          type: string
+          format: uri
+          pattern: '^https?://[^/?#]+$'
+          not:
+            pattern: '@'
+          description: Normalized HTTP/HTTPS origin with no user information.
+        path:
+          type: string
+          pattern: '^/[^?#]*$'
+          not:
+            pattern: '%(?:23|25|3[fF]|40)'
+          maxLength: 256
+          description: >-
+            Optional path approved or redacted by the versioned server policy.
+            Percent-encoded query/fragment/user-info separators, controls,
+            ambiguous encoding, and suspected sensitive tokens are prohibited.
+        displayValue:
+          type: string
+          maxLength: 512
+          pattern: '^[^?#]+$'
+          not:
+            pattern: '@|%(?:23|25|3[fF]|40)'
+          readOnly: true
+          description: >-
+            Server-constructed exact concatenation of normalized origin and the
+            approved/redacted path. It is never accepted from a request or
+            copied from an unvalidated database display value.
+      examples:
+        - origin: https://example.com
+          path: /docs
+          displayValue: https://example.com/docs
+        - origin: https://example.com
+          displayValue: https://example.com
+    PublicLinkCard:
+      type: object
+      additionalProperties: false
+      required:
+        - canonicalCode
+        - displayTitle
+        - canonicalShortUrl
+        - canonicalOpenUrl
+        - safeDestinationSummary
+        - aggregateTotalClicks
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        displayTitle:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Sanitized Title or server-selected safe fallback.
+        canonicalShortUrl:
+          type: string
+          format: uri
+          pattern: '^https://(op4n\.me|staging\.op4n\.me)/[A-Za-z0-9]{6,32}$'
+          description: Environment canonical short URL, never the destination.
+        canonicalOpenUrl:
+          type: string
+          format: uri
+          pattern: '^https://(op4n\.me|staging\.op4n\.me)/[A-Za-z0-9]{6,32}$'
+          description: Canonical redirect URL used by the browser Open action.
+        safeDestinationSummary: { $ref: '#/components/schemas/SafeDestinationSummary' }
+        aggregateTotalClicks:
+          type: integer
+          minimum: 0
+          description: Public cumulative aggregate only.
+    LatestLinksResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          description: Eligible cards ordered newest first by server-owned fields.
+          items: { $ref: '#/components/schemas/PublicLinkCard' }
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCategory]
+      properties:
+        reasonCategory:
+          type: string
+          enum: [abuse, phishing, malware, spam, other]
+        detail:
+          type: [string, 'null']
+          maxLength: 1000
+          description: Sensitive bounded reporter text; never returned or logged.
+    ReportReceipt:
+      type: object
+      additionalProperties: false
+      required: [accepted, receiptId]
+      properties:
+        accepted: { type: boolean, const: true }
+        receiptId:
+          type: string
+          format: uuid
+          description: Opaque receipt; does not reveal workflow state.
+    AdminLinkRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - canonicalCode
+        - title
+        - fullDestinationUrl
+        - destinationVersion
+        - lifecycleState
+        - safetyState
+        - discoveryState
+        - visibility
+        - aggregateTotalClicks
+        - reportCount
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        title: { type: [string, 'null'], maxLength: 200 }
+        fullDestinationUrl:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: Protected founder-only value; prohibited in logs and public output.
+        destinationVersion: { type: integer, const: 1 }
+        lifecycleState: { type: string, enum: [active, disabled, deleted] }
+        safetyState: { type: string, enum: [pending, approved, blocked] }
+        discoveryState: { type: string, enum: [eligible, withheld] }
+        visibility: { type: string, enum: [public] }
+        aggregateTotalClicks: { type: integer, minimum: 0 }
+        reportCount: { type: integer, minimum: 0 }
+    ModerationMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode]
+      properties:
+        reasonCode:
+          type: string
+          enum: [abuse_report, safety_block, policy_violation, operator_correction]
+        reasonDetail:
+          type: [string, 'null']
+          maxLength: 1000
+          description: Sensitive founder-only audit detail; never public or logged.
+    ModerationMutationResult:
+      type: object
+      additionalProperties: false
+      required: [canonicalCode, lifecycleState, auditRecorded]
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        lifecycleState: { type: string, enum: [active, disabled] }
+        auditRecorded: { type: boolean, const: true }
+    RedirectLookupRequest:
+      type: object
+      additionalProperties: false
+      required: [canonicalCode]
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+    RedirectDecision:
+      oneOf:
+        - $ref: '#/components/schemas/RedirectAllowedDecision'
+        - $ref: '#/components/schemas/RedirectUnknownDecision'
+        - $ref: '#/components/schemas/RedirectDisabledDecision'
+      discriminator:
+        propertyName: decision
+        mapping:
+          redirect: '#/components/schemas/RedirectAllowedDecision'
+          unknown: '#/components/schemas/RedirectUnknownDecision'
+          disabled: '#/components/schemas/RedirectDisabledDecision'
+    RedirectAllowedDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+        - canonicalCode
+        - fullDestinationUrl
+        - destinationVersion
+        - destinationFingerprint
+        - cacheControl
+        - redirectStatus
+      properties:
+        decision: { type: string, const: redirect }
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        fullDestinationUrl:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: Protected service-only destination, never browser API output or log data.
+        destinationVersion: { type: integer, const: 1 }
+        destinationFingerprint:
+          type: string
+          minLength: 16
+          maxLength: 256
+          description: Protected versioned keyed-HMAC value for correctness telemetry.
+        cacheControl: { type: string, const: no-store }
+        redirectStatus: { type: integer, const: 302 }
+    RedirectUnknownDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, canonicalCode]
+      properties:
+        decision: { type: string, const: unknown }
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+    RedirectDisabledDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, canonicalCode]
+      properties:
+        decision: { type: string, const: disabled }
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+    ClickRecordRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, canonicalCode, destinationVersion, occurredAt]
+      properties:
+        eventId:
+          allOf:
+            - $ref: '#/components/schemas/IdempotencyUuidV4'
+          description: Stable retry/deduplication identity; must equal Idempotency-Key identity.
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        destinationVersion: { type: integer, const: 1 }
+        occurredAt:
+          type: string
+          format: date-time
+          description: >-
+            Caller observation time accepted only within the configured bounded
+            clock-skew window. It never controls retention or deletion.
+    ClickRecordReceipt:
+      type: object
+      additionalProperties: false
+      required: [accepted, eventId, recordedAt]
+      properties:
+        accepted: { type: boolean, const: true }
+        eventId: { $ref: '#/components/schemas/IdempotencyUuidV4' }
+        recordedAt:
+          type: string
+          format: date-time
+          description: Server time that governs the rolling retention window.
+    HealthCheck:
+      type: object
+      additionalProperties: false
+      required: [name, status]
+      properties:
+        name:
+          type: string
+          enum: [router, environment, database, schema, redirectLookup, auditWrite]
+        status: { type: string, enum: [ready, not_ready] }
+    LivenessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, environment, releaseSha, configVersion]
+      properties:
+        status: { type: string, const: live }
+        environment: { type: string, enum: [staging, production] }
+        releaseSha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        configVersion: { type: string, minLength: 1, maxLength: 64 }
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, environment, releaseSha, configVersion, checks]
+      properties:
+        status: { type: string, const: ready }
+        environment: { type: string, enum: [staging, production] }
+        releaseSha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        configVersion: { type: string, minLength: 1, maxLength: 64 }
+        checks:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { $ref: '#/components/schemas/HealthCheck' }
+    ReadinessFailure:
+      type: object
+      additionalProperties: false
+      required: [status, checks]
+      properties:
+        status: { type: string, const: not_ready }
+        checks:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { $ref: '#/components/schemas/HealthCheck' }
+    ValidationDetail:
+      type: object
+      additionalProperties: false
+      required: [field, issue]
+      properties:
+        field:
+          type: string
+          enum:
+            - title
+            - destinationUrl
+            - code
+            - input
+            - reasonCategory
+            - detail
+            - reasonCode
+            - reasonDetail
+            - eventId
+            - occurredAt
+            - Idempotency-Key
+        issue: { type: string, minLength: 1, maxLength: 160 }
+    ErrorObject:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - UNSUPPORTED_PROTOCOL
+            - DESTINATION_BLOCKED
+            - RATE_LIMITED
+            - LINK_NOT_FOUND
+            - LINK_DISABLED
+            - IDEMPOTENCY_CONFLICT
+            - IDEMPOTENCY_IN_PROGRESS
+            - PAYLOAD_TOO_LARGE
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - DEPENDENCY_UNAVAILABLE
+            - INTERNAL_ERROR
+        message: { type: string, minLength: 1, maxLength: 240 }
+        requestId: { $ref: '#/components/schemas/RequestId' }
+        details:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ValidationDetail' }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { $ref: '#/components/schemas/ErrorObject' }
+    ReadinessErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, readiness]
+      properties:
+        error: { $ref: '#/components/schemas/ErrorObject' }
+        readiness: { $ref: '#/components/schemas/ReadinessFailure' }
+  examples:
+    PublicLinkCardExample:
+      summary: Deterministic eligible public card
+      value:
+        canonicalCode: R1EXAMPLE
+        displayTitle: Example documentation
+        canonicalShortUrl: https://op4n.me/R1EXAMPLE
+        canonicalOpenUrl: https://op4n.me/R1EXAMPLE
+        safeDestinationSummary:
+          origin: https://example.com
+          path: /docs
+          displayValue: https://example.com/docs
+        aggregateTotalClicks: 42
+  responses:
+    ValidationError:
+      description: Request schema or safe field validation failed.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: The request contains invalid fields.
+              requestId: 00000000-0000-4000-8000-000000000001
+              details:
+                - field: title
+                  issue: must not exceed the supported length
+    UnsupportedMediaType:
+      description: Request body must use application/json.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: The request content type is not supported.
+              requestId: 00000000-0000-4000-8000-000000000002
+    DestinationRejected:
+      description: Destination protocol is unsupported or screening rejected it safely.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples:
+            unsupportedProtocol:
+              value:
+                error:
+                  code: UNSUPPORTED_PROTOCOL
+                  message: Only HTTP and HTTPS destinations are supported.
+                  requestId: 00000000-0000-4000-8000-000000000003
+            blocked:
+              value:
+                error:
+                  code: DESTINATION_BLOCKED
+                  message: This destination cannot be shortened.
+                  requestId: 00000000-0000-4000-8000-000000000004
+    RateLimited:
+      description: Configured rate-limit class rejected the request.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+        RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests. Retry after the indicated delay.
+              requestId: 00000000-0000-4000-8000-000000000005
+    LinkNotFound:
+      description: No eligible canonical link matches the exact input.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: LINK_NOT_FOUND
+              message: No link was found for that exact short code.
+              requestId: 00000000-0000-4000-8000-000000000006
+    PublicLinkUnavailable:
+      description: >-
+        Exact public lookup is intentionally unknown or reversibly disabled.
+        Both use HTTP 404 while stable machine codes keep UI states distinct.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples:
+            unknown:
+              value:
+                error:
+                  code: LINK_NOT_FOUND
+                  message: No link was found for that exact short code.
+                  requestId: 00000000-0000-4000-8000-000000000006
+            disabled:
+              value:
+                error:
+                  code: LINK_DISABLED
+                  message: This link is not available.
+                  requestId: 00000000-0000-4000-8000-000000000007
+    IdempotencyRejected:
+      description: >-
+        HTTP 409 distinguished by machine code. IDEMPOTENCY_CONFLICT means the
+        same normalized key was used with a different canonical payload and is
+        not retryable. IDEMPOTENCY_IN_PROGRESS means the identical mutation is
+        still processing, is retryable, and requires Retry-After.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+        Retry-After: { $ref: '#/components/headers/ConditionalRetryAfter' }
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples:
+            conflict:
+              value:
+                error:
+                  code: IDEMPOTENCY_CONFLICT
+                  message: The idempotency key was already used for a different request.
+                  requestId: 00000000-0000-4000-8000-000000000008
+            inProgress:
+              value:
+                error:
+                  code: IDEMPOTENCY_IN_PROGRESS
+                  message: An identical request is still being processed.
+                  requestId: 00000000-0000-4000-8000-000000000015
+    PayloadTooLarge:
+      description: Request body exceeds the operation's configured safe size limit.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: The request body is too large.
+              requestId: 00000000-0000-4000-8000-000000000016
+    Unauthorized:
+      description: Required authentication is absent or invalid.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication is required.
+              requestId: 00000000-0000-4000-8000-000000000009
+    Forbidden:
+      description: Authenticated principal lacks authority or state guard forbids action.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: FORBIDDEN
+              message: This operation is not permitted.
+              requestId: 00000000-0000-4000-8000-000000000011
+    DependencyUnavailable:
+      description: A required dependency or readiness check is temporarily unavailable.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: DEPENDENCY_UNAVAILABLE
+              message: A required service is temporarily unavailable.
+              requestId: 00000000-0000-4000-8000-000000000012
+    InternalReadinessUnavailable:
+      description: One or more bounded readiness checks are not ready.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ReadinessErrorEnvelope' }
+          example:
+            error:
+              code: DEPENDENCY_UNAVAILABLE
+              message: The environment is not ready.
+              requestId: 00000000-0000-4000-8000-000000000014
+            readiness:
+              status: not_ready
+              checks:
+                - name: database
+                  status: not_ready
+    InternalError:
+      description: Unexpected error with no sensitive implementation detail.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: The request could not be completed.
+              requestId: 00000000-0000-4000-8000-000000000013
+    InternalValidationError:
+      description: Internal request schema or safe field validation failed.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalUnsupportedMediaType:
+      description: Internal request body must use application/json.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalRateLimited:
+      description: Internal rate-limit class rejected the request.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+        RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalIdempotencyRejected:
+      description: >-
+        Internal HTTP 409 distinguished by machine code. Retry-After is required
+        only for retryable IDEMPOTENCY_IN_PROGRESS and prohibited for
+        non-retryable IDEMPOTENCY_CONFLICT.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Retry-After: { $ref: '#/components/headers/ConditionalRetryAfter' }
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          examples:
+            conflict:
+              value:
+                error:
+                  code: IDEMPOTENCY_CONFLICT
+                  message: The idempotency key was already used for a different request.
+                  requestId: 00000000-0000-4000-8000-000000000008
+            inProgress:
+              value:
+                error:
+                  code: IDEMPOTENCY_IN_PROGRESS
+                  message: An identical request is still being processed.
+                  requestId: 00000000-0000-4000-8000-000000000015
+    InternalPayloadTooLarge:
+      description: Internal request body exceeds the configured safe size limit.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalUnauthorized:
+      description: Required internal authentication is absent or invalid.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalForbidden:
+      description: Authenticated service lacks internal operation authority.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalDependencyUnavailable:
+      description: A required internal dependency is temporarily unavailable.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalServerError:
+      description: Unexpected internal error with no sensitive implementation detail.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ModerationMutationSucceeded:
+      description: State transition and immutable audit action committed atomically.
+      headers:
+        X-Request-ID: { $ref: '#/components/headers/RequestId' }
+        Cache-Control: { $ref: '#/components/headers/NoStore' }
+        Vary: { $ref: '#/components/headers/VaryOrigin' }
+        Idempotency-Replayed: { $ref: '#/components/headers/IdempotencyReplayed' }
+        RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+        RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ModerationMutationResult' }

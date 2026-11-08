@@ -3,9 +3,10 @@
 - Status: Proposed for review
 - Scope: R1 Create as Guest, Feature Inventory Batch 1, Order 2
 - Related architecture: [R1 production architecture and service boundaries](./r1-production-architecture.md)
+- Related API contract: [R1 API contract and internal redirect boundary](../api/r1-api-contract.md)
 - Decision owner and initial operator: Founder
 - Public contact and escalation: `support@op4n.com`
-- Last updated: 2026-11-07
+- Last updated: 2026-11-08
 
 ## Purpose
 

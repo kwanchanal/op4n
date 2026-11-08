@@ -9,6 +9,7 @@
 - Related SLO: [R1 canonical redirect service-level objectives](./r1-redirect-slo.md)
 - Related environments: [R1 environment strategy](./r1-environment-strategy.md)
 - Related schema: [R1 production database schema and invariants](./r1-database-schema.md)
+- Related API contract: [R1 API contract and shared error model](../api/r1-api-contract.md)
 
 ## Purpose and scope
 
@@ -129,8 +130,9 @@ flowchart TD
 ```
 
 Order 6 remains a hard Production promotion dependency because the environment
-strategy requires a testable Staging entrypoint, API/Worker routes, CORS, and an
-end-to-end Staging flow. Order 5 does not define those values.
+strategy requires the approved Staging entrypoint, API/Worker route, CORS, and
+error contracts to be implemented and verified in an end-to-end Staging flow.
+Order 5 does not create those resources.
 
 ## Migration creation, naming, and ordering
 
@@ -428,7 +430,7 @@ Apply the pending set once, then immediately capture the ledger and rerun the
 history, drift, and Order 4 invariants. Load/reset only the approved synthetic
 Staging fixtures through their separate guarded path. Verify creation,
 active/pending/blocked/disabled behavior, exact correct destination, `302`
-with `no-store`, public origin-only projection, Latest 100, exact search,
+with `no-store`, policy-approved safe public projection, Latest 100, exact search,
 report/moderation, click aggregate, RLS/service boundaries, and telemetry.
 
 Staging failure stops the release. A Staging pause or failure is not a Production
@@ -486,7 +488,7 @@ counts/digests, never protected row values. Both environments require:
 | Issued-code uniqueness and non-reuse | Zero duplicate canonical codes; every existing code-to-link assignment and retired tombstone remains present and unchanged; issued-code count cannot decrease. Any violation blocks/halts release. |
 | Destination ownership/correctness | Every current destination satisfies the composite `(link_id, destination_id)` ownership constraint and version 1 rules; existing link/destination mapping digest is unchanged unless the reviewed migration explicitly preserves the same normalized destination during HMAC rotation. A mismatch is a critical incorrect-destination incident. |
 | Valid state axes | Lifecycle, safety, and discovery values and guarded timestamps are valid; `active + pending/blocked` may persist but cannot enter redirect or discovery projections; lifecycle restore never bypasses safety. |
-| Public projection | Exact allowed columns only; rows require active + approved + public + eligible; summary is normalized origin only with policy version and contains no user info, path, query, fragment, report, moderation, or protected field. |
+| Public projection | Exact allowed columns only; rows require active + approved + public + eligible; summary contains a normalized origin plus only a policy-approved/redacted path or origin-only fallback, with no user info, query, fragment, report, moderation, or protected field. |
 | Click aggregates and retention | Every total is non-negative and no existing total decreases; event/aggregate confirmation remains consistent; retention removes only confirmed events older than 30 days. |
 | Referential integrity and RLS | Required UUID keys, unique/composite constraints, restricted deletion, deny-by-default base tables, and service capabilities remain effective. |
 | Audit/moderation history | Append-only records and action/link ownership remain intact; no migration truncates or rewrites evidence. |
@@ -661,7 +663,8 @@ After apply, retain the ledger and run:
 - all Order 4 post-migration invariant checks;
 - bounded active/unknown/disabled/pending/blocked redirect checks without
   following destinations, verifying exact `302`/`Location` and `no-store`;
-- public projection/Latest/exact-search checks for origin-only safe output;
+- public projection/Latest/exact-search checks for policy-approved safe output
+  with origin-only fallback and no query/fragment leakage;
 - report/moderation and aggregate checks that do not expose sensitive data;
 - RLS/service-capability and telemetry checks;
 - latency/error/saturation observation appropriate to the Order 2 release gate.

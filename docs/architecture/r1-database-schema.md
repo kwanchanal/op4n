@@ -5,6 +5,7 @@
 - Related architecture: [R1 production architecture and service boundaries](./r1-production-architecture.md)
 - Related SLO: [R1 canonical redirect service-level objectives](./r1-redirect-slo.md)
 - Related environments: [R1 environment strategy](./r1-environment-strategy.md)
+- Related API contract: [R1 API contract and shared error model](../api/r1-api-contract.md)
 
 ## Purpose and scope
 
@@ -75,8 +76,10 @@ erDiagram
     }
 
     PUBLIC_LINK_PROJECTION {
-        text title
+        text canonical_code
+        text display_title
         text canonical_short_url
+        text canonical_open_url
         text safe_destination_summary
         bigint aggregate_clicks
     }
@@ -152,7 +155,7 @@ every audited table, so it is shown separately from the relational lines.
 
 | Class | Meaning | R1 examples | Handling boundary |
 | --- | --- | --- | --- |
-| Public | Deliberately returned by public discovery after eligibility checks. | Title, canonical short URL, approved safe destination summary, aggregate clicks. | May leave the backend only through the public projection. Output-encode and rate-limit. |
+| Public | Deliberately returned by public discovery after eligibility checks. | Canonical code, display title/fallback, canonical short/Open URLs, approved safe destination summary, aggregate clicks. | May leave the backend only through the public projection. Output-encode and rate-limit. |
 | Protected | Required by a narrowly scoped backend function but never part of public discovery. | Full destination URL, query parameters, fragment, destination fingerprint, lifecycle and safety state, internal UUIDs. | Backend services only. Redirect receives the minimum full destination for one eligible code. |
 | Sensitive | Could reveal abuse reports, moderation reasoning, or an administrator. | Report detail, moderation reason detail, actor principal, non-public safety signals. | Founder/Admin workflows only; redact from general logs and audit metadata. |
 | Operational | Supports reliability, traceability, and maintenance. | UTC timestamps, environment, correlation ID, aggregate and policy versions, workflow status. | Least-privilege operational access and retention; never treat it as automatically Public. |
@@ -167,7 +170,7 @@ field is not made public merely because another field in the row is Public.
 | Field | Class | Rules |
 | --- | --- | --- |
 | `id` | Operational | UUID primary key. |
-| `canonical_code` | Public | Random, non-sequential canonical representation; unique and immutable. The alphabet, length, and request normalization belong to Order 6. |
+| `canonical_code` | Public | Random, non-sequential canonical representation; unique and immutable. Order 6 defines the public API profile as case-sensitive ASCII alphanumeric, 6–32 characters, with exact normalization rules. |
 | `registry_state` | Operational | `issued` or `retired`; never returns to an allocatable state. |
 | `issued_at` | Operational | Set once when the code/link creation transaction commits. |
 | `retired_at` | Operational | Nullable; set when the canonical link is permanently retired. |
@@ -206,8 +209,8 @@ disable, restore, or claim it through a public API.
 | `destination_fingerprint` | Protected | Versioned keyed HMAC of the normalized full destination, used for integrity/correctness checks. It is never a public identifier or response field. A plain or unsalted digest is insufficient. |
 | `fingerprint_algorithm` | Protected | Required bounded algorithm identifier for the keyed HMAC. Algorithm changes create a new fingerprint version; they never reinterpret an old value. |
 | `fingerprint_key_version` | Protected | Required opaque key-version identifier that supports backend key rotation without storing the key itself. |
-| `safe_destination_summary` | Public when projected | R1 stores only the normalized origin, for example `https://example.com`, with no user info, path, query, or fragment—even masked, hashed, or as a suffix. A path summary requires a later verifiable policy. |
-| `summary_policy_version` | Operational | Required bounded identifier for the policy that generated the summary. R1 uses the approved origin-only policy version. |
+| `safe_destination_summary` | Public when projected | Stores versioned policy output for a normalized origin and optional approved/redacted path. If no path is provably safe, it falls back to origin-only. Percent-encoded separators, user info, controls, ambiguous encoding, suspected sensitive tokens, query, fragment, and unapproved path content are prohibited. The API reconstructs `displayValue` from validated components and never emits this field as an unvalidated raw display string. |
+| `summary_policy_version` | Operational | Required bounded identifier for the server-side policy that generated the summary and determined whether a path was safe to include. |
 | `created_at`, `superseded_at` | Operational | Version-history timestamps. Routing identity fields remain immutable; only an audited post-deletion retention redaction may erase the protected URL. |
 
 Both `(link_id, version_number)` and `(link_id, id)` are unique. The latter is
@@ -229,13 +232,16 @@ reviewed implementation path without exposing the full destination publicly.
 
 ### `public_link_projection` — public read contract
 
-The public response contains exactly these values:
+The public projection supplies exactly the values needed for the Order 6
+`PublicLinkCard` response:
 
 | Value | Source and rule |
 | --- | --- |
-| `title` | Nullable sanitized `canonical_links.title`. Order 6 defines the API/presentation fallback when absent. |
+| `canonical_code` | Immutable public canonical code; never authorization. |
+| `display_title` | Sanitized `canonical_links.title` or the server-selected safe fallback when Title is null. |
 | `canonical_short_url` | Constructed by the backend from approved `op4n.me` configuration and the canonical code; the database does not guess an API or host route. |
-| `safe_destination_summary` | Normalized origin from the current destination version. User info, path, query, and fragment are excluded. |
+| `canonical_open_url` | Same environment canonical redirect entrypoint used by the browser Open action; never a protected destination. |
+| `safe_destination_summary` | Normalized origin plus only a policy-approved/redacted path, or origin-only fallback. User info, query, and fragment are excluded. |
 | `aggregate_clicks` | Non-negative `click_aggregates.total_clicks`, defaulting to zero when no aggregate row exists. |
 
 The service-only read model may use the canonical code as its exact filter, but
@@ -255,8 +261,8 @@ query parameter, or fragment. Projection eligibility requires all of:
 | --- | --- | --- |
 | `click_events.id` | Operational | UUID primary key. |
 | `link_id`, `destination_version_id` | Protected | Foreign keys identify the mapping snapshot that emitted the successful `302`. They are never public. |
-| `ingestion_key` | Operational | UUID idempotency key unique per recorded event; it is not derived from a person or device. |
-| `occurred_at`, `recorded_at` | Operational | Event and ingestion times. `recorded_at` drives the rolling retention scan. |
+| `ingestion_key` | Operational | Worker-supplied UUID event identity unique throughout the rolling 30-day event retention and independent of generic idempotency-record expiry; it is not derived from a person or device. |
+| `occurred_at`, `recorded_at` | Operational | `occurred_at` is accepted only within a bounded clock-skew window. Server-generated `recorded_at` is authoritative for the rolling retention scan and deletion. |
 | `counted_aggregate_version` | Operational | Required aggregate version produced by the same transaction that increments `total_clicks`; proves the stored event was counted before retention can remove it. |
 | `click_aggregates.link_id` | Protected | One aggregate row per canonical link. |
 | `total_clicks` | Public when projected | Non-negative, monotonically increasing aggregate of accepted events. |
@@ -267,6 +273,9 @@ retention job may delete only an event older than 30 days whose
 `counted_aggregate_version` is confirmed in the link's current aggregate.
 `click_aggregates.total_clicks` is cumulative and must not decrease when event
 detail expires. Click events are immutable until that restricted deletion.
+An identity already accepted and counted cannot increment the aggregate again
+when a generic idempotency record expires. Environment is derived from the
+authenticated internal service context rather than trusted from the event body.
 
 R1 does not store raw IP addresses, user-agent strings, device identifiers,
 fingerprints, edge/location fields, or precise locations. Click insertion and
@@ -402,7 +411,8 @@ decision. Storage pressure cannot change retention without review.
 Browsers never receive the Supabase Secret key and do not select base tables
 directly. RLS defaults to deny for public and client roles; narrowly scoped
 backend operations expose only the capabilities below. Concrete API hostname,
-routes, request schemas, public route mapping, and CORS remain Order 6 work.
+routes, request schemas, public route mapping, and CORS are defined by the
+linked Order 6 contract and remain undeployed.
 
 | Principal/service | Allowed capability | Explicitly denied |
 | --- | --- | --- |
@@ -431,8 +441,8 @@ authorize creating them.
 | --- | --- | --- |
 | Exact canonical redirect | Unique B-tree on `issued_codes(canonical_code)`; unique `canonical_links(issued_code_id)`; unique destination ownership key `(link_id, id)`. One atomic lookup checks code, `active + approved`, and destination ownership. | At most one full destination/version for the redirect service. |
 | Destination creation/integrity | Unique `(link_id, version_number)` prevents duplicate versions within one link; `(link_id, id)` proves the current destination belongs to that link. | R1 commits version 1 only. Neither constraint implies global version-number uniqueness. |
-| Latest 100 | Partial descending index on `canonical_links(created_at, id)` for `active + approved + public + eligible`; keyset pagination; join one aggregate and the origin-only summary. | Exactly the four-field public projection; limit 100. |
-| Exact public search | Reuse the unique canonical-code lookup and apply the same public eligibility predicate. No additional search index and no destination, title, prefix, or fuzzy scan. | Zero or one four-field public projection. |
+| Latest 100 | Partial descending index on `canonical_links(created_at, id)` for `active + approved + public + eligible`; keyset pagination; join one aggregate and the policy-approved safe summary. | Exactly the six-field public card projection; limit 100. |
+| Exact public search | Reuse the unique canonical-code lookup and apply the same public eligibility predicate. No additional search index and no destination, title, prefix, or fuzzy scan. | Zero or one six-field public card projection. |
 | Click idempotency | Unique `click_events(ingestion_key)` rejects duplicate post-response writes. | Backend analytics only; public sees only the cumulative total. |
 | Click retention | B-tree on `click_events(recorded_at, id)` scans events older than 30 days in stable batches; deletion additionally verifies `counted_aggregate_version`. | Restricted retention job only. There is no `(link_id, occurred_at, id)` index because R1 has no query requiring it. |
 | Report queue and Admin case lookup | `reports(workflow_state, created_at, id)` serves the founder's pending queue; `reports(link_id, created_at, id)` serves reports for one exact link; `moderation_cases(link_id, opened_at, id)` finds its cases; `moderation_actions(case_id, occurred_at, id)` renders one case timeline. | Authenticated founder/Admin only. Exact link/code lookup reuses primary/unique keys. |
@@ -446,7 +456,7 @@ plan, and Free-tier write/storage impact review.
 
 The redirect query is the only authority for code-to-destination resolution:
 
-1. Normalize the request code according to the future Order 6 contract and use
+1. Normalize the request code according to the linked Order 6 contract and use
    the unique registry lookup; never use a prefix, case-insensitive fallback, or
    destination-derived search.
 2. In one database statement/snapshot, join the immutable code assignment to
@@ -515,12 +525,14 @@ ownership constraint, public projection boundary, and redirect correctness SLO.
 - Supabase Postgres in Singapore is the R1 system of record; Staging and
   Production are separate Free projects. Free-tier capacity, pause behavior,
   and one-founder operation are accepted constraints.
-- The three independent state axes, origin-only public summary, immutable
-  destination version 1, versioned keyed-HMAC fingerprint, rolling 30-day click
-  retention, and query-backed index set are finalized Order 4 review decisions.
-- Code alphabet, length, normalization, API schemas, routes, CORS, rate-limit
-  identity, non-click retention durations, and concrete database policies/DDL
-  remain for later approved work. The schema does not invent them.
+- The three independent state axes, policy-approved public summary with
+  origin-only fallback, immutable destination version 1, versioned keyed-HMAC
+  fingerprint, rolling 30-day click retention, and query-backed index set are
+  finalized Order 4 review decisions.
+- Order 6 defines the canonical-code API profile, exact-input normalization,
+  API schemas/routes, CORS, and rate-limit policy-class identities. Numeric
+  rate limits, non-click retention durations, and concrete database policies/DDL
+  remain later implementation work.
 - This document proposes logical roles and constraints. Migration implementation
   must demonstrate that Supabase/RLS behavior and query plans match them before
   Production. Storage pressure or load evidence can trigger a reviewed change;
@@ -533,7 +545,7 @@ ownership constraint, public projection boundary, and redirect correctness SLO.
 | ERD and schema dictionary cover keys, constraints, relationships, lifecycle, deletion, audit, classification, RLS/service boundaries, and indexes. | ERD; Data classification; Schema dictionary; State/transition matrix; Lifecycle; Service boundaries; Query/index design. |
 | Independent lifecycle, safety, and discovery axes have guarded transitions and the successful Guest initial state is explicit. | State and transition matrix; State invariants 1–6; Creation API boundary. |
 | Canonical codes are random, unique, permanent, and never reused after deletion or migration. | `issued_codes`; State invariants 7–9; deletion and migration rules. |
-| Public output contains only eligible safe fields and never a protected destination, path, user info, query, fragment, report, or moderation data. | Origin-only `safe_destination_summary`; `public_link_projection`; classification and RLS boundaries. |
+| Public output contains only eligible safe fields and never a protected destination, unapproved path, user info, query, fragment, report, or moderation data. | Policy-approved/redacted `safe_destination_summary` with origin-only fallback; `public_link_projection`; classification and RLS boundaries. |
 | Protected destination integrity uses immutable version 1, composite ownership/version constraints, and a rotatable versioned keyed HMAC. | Destination dictionary; HMAC secret boundary; State invariant 8. |
 | Exact redirect, Latest 100, exact search, retention, and Admin lookup have non-speculative supporting paths. | Query and index design. |
 | Incorrect-destination behavior is prevented and fails closed. | Destination ownership constraint and Redirect correctness/failure behavior. |

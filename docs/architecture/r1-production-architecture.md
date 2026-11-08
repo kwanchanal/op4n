@@ -4,7 +4,8 @@
 - Scope: R1 Create as Guest, Feature Inventory Batch 1, Order 1
 - Decision owner and initial operator: Founder
 - Public contact and escalation: `support@op4n.com`
-- Last updated: 2026-11-07
+- Related API contract: [R1 API contract and shared error model](../api/r1-api-contract.md)
+- Last updated: 2026-11-08
 
 ## Purpose and scope
 
@@ -34,7 +35,7 @@ measured without changing the service boundaries.
 | ADR-002 | Use Cloudflare as authoritative DNS for `op4n.com`, with its records set to DNS only. | Cloudflare answers DNS but does not proxy `op4n.com` traffic or terminate its TLS. The HTTPS connection goes to GitHub Pages. This record does not authorize changing live DNS. |
 | ADR-003 | Proxy and route `op4n.me/{code}` through Cloudflare to a Cloudflare Worker. | HTTPS/TLS for `op4n.me` terminates at the Cloudflare edge, which invokes the redirect Worker. The short-link route is operationally separate from `op4n.com` hosting. |
 | ADR-004 | Use Supabase Free in Singapore for Postgres and backend services. | R1 starts with one regional system of record and accepts that database or regional failure can stop lookup and mutation paths. |
-| ADR-005 | Expose REST/JSON backend contracts under the versioned path `/api/v1`. The static frontend calls Supabase backend services through an environment-configured `API_BASE_URL`. | `/api/v1` is a path contract, not a claim that GitHub Pages hosts the API. The concrete hostname, public route, and CORS configuration remain owned by Order 6, Define API contracts and shared error model. |
+| ADR-005 | Expose REST/JSON backend contracts under the versioned path `/api/v1`. The static frontend calls one environment-specific Supabase Edge Function router named `op4n-api` through `API_BASE_URL`. | `/api/v1` is a path contract, not a claim that GitHub Pages hosts the API. Order 6 defines the Supabase function URL shape, resource routes, exact CORS origins, and deployment validation without creating them. |
 | ADR-006 | Return HTTP `302` for a successful short-link redirect and start with `Cache-Control: no-store`. | Destination and moderation changes take effect without relying on edge-cache invalidation. Every redirect performs an authoritative lookup. |
 | ADR-007 | Generate random, non-sequential canonical codes and never reuse a code. | Codes do not disclose creation volume; deleted or retired codes remain tombstoned and cannot identify another destination later. |
 | ADR-008 | Add no dedicated cache or queue initially. | Postgres is authoritative. Analytics writes run off the response-critical redirect path, but without a durable queue an analytics outage can create observable count gaps. Load and reliability tests decide whether a cache or queue is justified. |
@@ -53,7 +54,7 @@ flowchart LR
   Worker[Cloudflare Worker\nop4n.me redirect]
 
   subgraph Supabase[Supabase Free — Singapore]
-    API[Supabase backend services\nREST/JSON versioned path /api/v1\ncreation, listing, search, reporting, moderation]
+    API[Supabase Edge Function router — op4n-api\nAPI_BASE_URL + /api/v1\ncreation, listing, search, reporting, moderation]
     Redirect[Redirect lookup boundary\nleast-privilege backend operation]
     Jobs[Scheduled maintenance jobs\nretention and reconciliation]
     DB[(Postgres\nlinks, click events, reports,\nmoderation and audit records)]
@@ -87,8 +88,10 @@ dedicated R1 cache or queue. “Jobs” means scheduled, idempotent maintenance
 invoked through the backend platform; it is not a separate always-on service.
 `op4n.com` remains DNS only at Cloudflare, while GitHub Pages terminates its TLS.
 The static frontend reads the non-secret, environment-specific `API_BASE_URL`
-and calls the API hosted by Supabase backend services. This record does not
-choose that API's concrete hostname, public route, or CORS configuration.
+and calls the `op4n-api` router hosted by Supabase backend services. The
+[Order 6 API contract](../api/r1-api-contract.md) defines the function URL
+shape, `/api/v1` resources, environment placeholders, and exact CORS policy;
+neither record creates or deploys them.
 
 ## Component boundaries and ownership
 
@@ -99,7 +102,7 @@ choose that API's concrete hostname, public route, or CORS configuration.
 | Cloudflare authoritative DNS for `op4n.me` | Publish the proxied short-domain record that resolves into Cloudflare's edge path. | Terminate TLS itself, proxy `op4n.com`, serve the main frontend, or contain product records. | Cloudflare authoritative DNS. | A short-domain DNS failure prevents `op4n.me` resolution but does not change where either domain terminates TLS. | Founder |
 | Cloudflare edge for `op4n.me` | Receive the proxied request, terminate `op4n.me` HTTPS/TLS, and route matching requests to the Worker. | Terminate `op4n.com` TLS, serve the main frontend, or become an API-origin alias. | A resolved proxied record, Cloudflare edge TLS, and Worker routing. | An edge certificate, TLS, proxy, or route failure stops `op4n.me` requests without making GitHub Pages the redirect fallback. | Founder |
 | Cloudflare Worker redirect service | Normalize a canonical code, request an authoritative lookup, return intentional unknown/disabled states or a `302`, and schedule click recording after the response. | Serve discovery, search, Admin UI, or treat a code as ownership proof. | Redirect lookup boundary and therefore Postgres; destination is not contacted by the service. | Analytics, Latest Links, search, reporting, and moderation UI failures do not block a valid redirect. Database lookup failure does. | Founder |
-| Supabase backend services / API origin | Host the backend operations exposed through the versioned `/api/v1` path contract and separate public from protected operations. The browser reaches it through `API_BASE_URL`. | Assume the API is hosted by GitHub Pages or commit a concrete hostname, public route, or CORS configuration in Order 1. | Supabase platform and Postgres; individual operations have the additional dependencies listed below. | API-origin failure can leave static `op4n.com` assets available while dynamic creation, listing, search, reporting, and Admin operations fail intentionally. | Founder |
+| Supabase Edge Function router / API origin | Host `op4n-api` per environment, expose the versioned `/api/v1` resource contracts, and separate public, founder, and internal service operations. The browser reaches it through `API_BASE_URL`. | Assume GitHub Pages hosts the API, accept wildcard/arbitrary-origin CORS, or expose internal redirect/click operations to browsers. | Supabase platform and Postgres; individual operations have the additional dependencies listed below. | API-origin failure can leave static `op4n.com` assets available while dynamic creation, listing, search, reporting, and Admin operations fail intentionally. | Founder |
 | Creation API | Validate HTTP/HTTPS input, apply rate limits and safety screening, generate a random code, and create a Public read-only Guest link. | Grant Guest ownership or expose internal safety rules. | Postgres, rate-limit mechanism, and required safety decision. | Creation can fail closed without affecting redirect or read-only discovery. | Founder |
 | Redirect lookup boundary | Return only the minimum redirect decision for one exact code: destination, active/disabled/unknown state, and safe response metadata. | Return Admin, report, click-detail, or private request data. | Postgres. | A narrow contract limits redirect exposure and prevents discovery failures from entering the path. | Founder |
 | Click analytics | Append a minimized click event and maintain/reconcile the public aggregate total. | Delay or veto an otherwise valid redirect; expose detailed events publicly. | Postgres when the asynchronous write runs. | Failure is logged and alerted but does not change the issued `302`. Without a queue, outage-period events may be missing. | Founder |
@@ -124,22 +127,28 @@ choose that API's concrete hostname, public route, or CORS configuration.
    versioned `/api/v1` path. Supabase backend services, not GitHub Pages, host
    the API operations. Creation, Latest Links, exact search, and report
    endpoints are public but rate-limited, schema-validated, and output-encoded.
+   They require no user JWT; a supplied token grants no extra capability.
    They use only public/anonymous database capabilities exposed through backend
-   operations, never a privileged key in the browser. Order 6 will define the
-   concrete hostname, public route, and CORS configuration.
-4. **Worker/backend to Supabase.** Server-side credentials are secrets and
-   least-privilege per service. Redirect lookup can read only the fields needed
-   to decide the response; public APIs cannot use an unrestricted service role.
+   operations, never a privileged key in the browser. Order 6 defines the
+   environment-specific function URL shape, resource routes, and exact CORS
+   matrix in the linked API contract.
+4. **Worker/backend to Supabase.** The Worker uses a rotatable custom
+   environment service credential restricted to internal operations, never a
+   Supabase Publishable/Secret key or founder JWT as its bearer credential.
+   Redirect lookup can read only the fields needed to decide the response;
+   public APIs cannot use an unrestricted service role.
 5. **Admin boundary.** Moderation is protected separately from Guest APIs.
-   Founder identity and authorization are required for every mutation, and
-   actions are audited. A short URL or code is never authorization.
+   A Supabase Auth user JWT must pass signature, issuer, audience, time,
+   environment, and stable-subject allowlist checks for every founder request;
+   mutations are audited. No static founder bearer is shipped to the browser.
+   A short URL or code is never authorization.
 6. **External provider boundary.** Safety requests send the minimum destination
    information and use a server-held credential. Provider responses are
    untrusted input and cannot directly mutate link state.
 
 Public data is limited to the active eligible link's Title, canonical short URL,
-safe destination summary (normalized origin only in R1; no user info, path,
-query, or fragment), and
+safe destination summary (normalized origin plus only a server-approved or
+redacted path, with origin-only fallback and no user info, query, or fragment), and
 aggregate total click count. The full destination is protected service data: it
 is used to perform the Open/redirect action but is not returned in public
 listing or search payloads. Protected data also includes full destination query
@@ -155,8 +164,8 @@ request identifiers.
 1. The browser loads static assets and non-secret environment configuration
    from GitHub Pages at `op4n.com`, then sends JSON to the creation endpoint
    beneath `${API_BASE_URL}/api/v1`. Supabase backend services host this
-   operation; GitHub Pages does not proxy or serve it. Order 6 defines the
-   concrete route.
+   operation; GitHub Pages does not proxy or serve it. Order 6 defines
+   `POST /api/v1/links`.
 2. The API validates schema and accepts only supported HTTP/HTTPS destinations,
    applies rate limits, normalizes the destination, and requests the required
    safety decision.
@@ -191,8 +200,8 @@ longer acceptable.
 ### Public Latest Links
 
 1. The browser calls the Latest Links endpoint beneath
-   `${API_BASE_URL}/api/v1` on Supabase backend services. Order 6 defines the
-   concrete route and pagination contract.
+   `${API_BASE_URL}/api/v1` on Supabase backend services through the Order 6
+   `GET /api/v1/links` contract.
 2. The API queries only active, Public, safety-approved records, newest first,
    and returns public fields plus aggregate counts.
 3. Timeout or database error produces a visible discovery error without
@@ -209,8 +218,7 @@ longer acceptable.
 ### Report
 
 1. A public card sends a bounded reason and canonical-link identifier to the
-   reporting endpoint beneath `${API_BASE_URL}/api/v1` on Supabase backend
-   services. Order 6 defines the concrete route.
+   `POST /api/v1/links/{code}/reports` endpoint on Supabase backend services.
 2. The API validates, rate-limits, and persists the report before acknowledging
    it. It returns no sensitive moderation state.
 3. Follow-up notification/escalation routes to `support@op4n.com`. Delivery
@@ -251,8 +259,9 @@ IDs, not stack traces or provider details.
 ## Security and secrets
 
 - Enforce HTTPS, schema and size limits, output encoding, supported-protocol
-  validation, and rate limits at the appropriate edge/backend boundary. Order 6
-  defines the concrete API hostname, public route, and CORS configuration.
+  validation, and rate limits at the appropriate edge/backend boundary. The
+  Order 6 contract defines the API function URL shape, resource routes, and
+  exact CORS configuration without deploying them.
 - Use separate least-privilege credentials for redirect lookup, public API
   operations, scheduled jobs, and Admin operations. Prefer platform-managed
   secret stores; never put production credentials in Git, frontend assets,
@@ -363,18 +372,18 @@ explicit follow-up decisions, not implicit additions to Order 1.
 | Every component has an owner. | Founder ownership is recorded for every row; central escalation is `support@op4n.com`. |
 | Redirect is independent from analytics and discovery failures. | Redirect flow contains only Worker, redirect lookup, and Postgres; analytics is post-response and discovery paths are separate. |
 | R1 SLO, security, backup, and rollback needs are supported. | Small uncached redirect path, load/fault gates, security and secrets controls, and explicit backup/migration/deploy/rollback boundaries. Numeric SLO and RPO/RTO values remain in their dedicated R1 decisions. |
-| DNS/TLS and API-origin boundaries match the reviewed deployment model. | `op4n.com` is DNS only at Cloudflare with TLS at GitHub Pages; `op4n.me` is proxied with TLS at Cloudflare edge. The frontend calls Supabase backend services via `API_BASE_URL`, while concrete host, route, and CORS decisions remain in Order 6. |
+| DNS/TLS and API-origin boundaries match the reviewed deployment model. | `op4n.com` is DNS only at Cloudflare with TLS at GitHub Pages; `op4n.me` is proxied with TLS at Cloudflare edge. The frontend calls the environment `op4n-api` Supabase router via `API_BASE_URL`; Order 6 defines its function URL shape, routes, and exact CORS policy without deploying them. |
 | Product Plan and approved decisions are preserved. | R1-only scope, public/protected data rules, Guest invariants, 302/no-store, random never-reused codes, Singapore Supabase, and no initial cache/queue are all explicit. |
 
 ## Deferred decisions and triggers
 
 This record does not authorize implementing later Feature Inventory cards. The
-following remain separate decisions: numeric redirect SLO, detailed API/error
-contracts, concrete API hostname and public route, CORS configuration,
+following remain separate implementation decisions: numeric redirect SLO,
+deployment of the approved API/error contracts and CORS configuration,
 [production database schema and invariants](./r1-database-schema.md), analytics retention,
 [Staging and Production separation](./r1-environment-strategy.md), backup RPO/RTO,
-dashboards/alerts, and secrets implementation. The API-origin details are owned
-by Order 6, Define API contracts and shared error model.
+dashboards/alerts, and secrets implementation. The API-origin contract is owned
+by Order 6; its live implementation remains a later card.
 
 A cache may be proposed only if load tests show authoritative reads cannot meet
 the approved redirect SLO or platform limits. A durable queue may be proposed if

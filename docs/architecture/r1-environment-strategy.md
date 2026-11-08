@@ -4,8 +4,9 @@
 - Scope: R1 Create as Guest, Feature Inventory Batch 1, Order 3
 - Related architecture: [R1 production architecture and service boundaries](./r1-production-architecture.md)
 - Related SLO: [R1 canonical redirect service-level objectives](./r1-redirect-slo.md)
+- Related API contract: [R1 API contract and shared error model](../api/r1-api-contract.md)
 - Decision owner and initial operator: Founder
-- Last updated: 2026-11-07
+- Last updated: 2026-11-08
 
 ## Purpose and decisions
 
@@ -26,9 +27,9 @@ Development, Preview, QA, or per-branch hosted environments.
 Staging and Production use separate Supabase Free projects in Singapore so the
 hosted verification topology matches the Order 1 Production region. GitHub Pages
 remains the Production frontend for `op4n.com`. This decision does not create a
-second GitHub Pages site or select a hosted Staging frontend. Concrete API
-hostnames, public routes, Worker routes, Staging entrypoints, and CORS behavior
-remain Order 6 decisions.
+second GitHub Pages site or select a hosted Staging frontend. Order 6 now defines
+the planned Staging entrypoint, API/Worker route contracts, and exact CORS
+behavior, but does not create or deploy them.
 
 The Supabase Free plan's two active-project capacity is fully allocated to
 Staging and Production. R1 has no capacity for an additional Preview or QA
@@ -41,10 +42,10 @@ keep-alive workaround and does not change to a paid plan.
 | Boundary | Local workflow | Staging hosted environment | Production hosted environment |
 | --- | --- | --- | --- |
 | Purpose | Fast development, linting, unit/component tests, migration dry-runs, and deterministic fixtures | Integration, migration, fault, SLO instrumentation, synthetic end-to-end, and release-candidate verification | Live Guest R1 traffic, durable canonical links, redirects, reports, moderation, and operational monitoring |
-| Frontend | Local files or local server; never a hosted Local environment | No hosted frontend is chosen here; a Local client may exercise the future Staging entrypoint using only public Staging configuration | Static `op4n.com` frontend on GitHub Pages |
+| Frontend | Local files or local server at `http://127.0.0.1:5500`; never a hosted Local environment | Planned `https://staging.op4n.com`; Order 6 defines the contract but does not create hosting | Static `https://op4n.com` frontend on GitHub Pages |
 | Backend | Mock adapters or disposable local services only | Dedicated Supabase Free Staging project and Staging-scoped backend configuration | Dedicated Supabase Free Production project and Production-scoped backend configuration |
 | Data | Deterministic local fixtures; disposable | Deterministic synthetic fixtures only; resettable | Real production records; never copied to Local or Staging |
-| Redirect surface | Local simulation or test harness | Synthetic canonical redirect test surface; concrete hostname/route deferred to Order 6 | Public `op4n.me` Cloudflare edge and Worker route defined by Order 1 |
+| Redirect surface | Local simulation or test harness | Planned `https://staging.op4n.me/{code}` synthetic redirect entrypoint; not created by Order 6 | Public `https://op4n.me/{code}` Cloudflare edge and Worker route defined by Order 1 |
 | Users | Developers/test automation; no real user records | Synthetic actors only | Real public users and founder-operated Admin functions |
 | Availability claims | None | Test evidence only; excluded from Production SLO calculations | Order 2 request and synthetic SLIs after its release gates pass |
 
@@ -81,8 +82,8 @@ weaken this isolation rule.
 | --- | --- |
 | Database | Separate Supabase projects, Postgres databases, migration ledgers, database URLs, roles, policies, and connection credentials. Never restore, replicate, or export Production data into Staging or Local. |
 | Credentials and secrets | Separate secret values and scopes for Staging and Production. A Supabase Publishable key is public-client configuration governed by RLS, not privileged authority. A Supabase Secret key is a backend-only privileged secret. Production secrets exist only in the Production deployment/operations scope; they are absent from developer machines, Local configuration, Staging, fixtures, logs, and repository files. |
-| API configuration | Separate environment configuration and project references. `API_BASE_URL` is environment-specific, but concrete values, hosts, public routes, and CORS are deferred to Order 6. |
-| Worker configuration | Separate environment binding, variables, secrets, project reference, route configuration, analytics binding, and deployment record. A Staging deployment must never bind the Production route; route names/values are deferred to Order 6. |
+| API configuration | Separate environment configuration and project references. Order 6 defines `API_BASE_URL` as the environment Supabase `op4n-api` function URL and resources beneath `/api/v1`; deployment substitutes and validates the protected project reference. |
+| Worker configuration | Separate environment binding, variables, secrets, project reference, route configuration, analytics binding, and deployment record. Staging uses the planned `staging.op4n.me/{code}` contract and must never bind `op4n.me/{code}`. |
 | Storage | Separate project storage and bucket identifiers. Staging accepts synthetic assets only. Production objects are never copied into Local or Staging for debugging or fixtures. |
 | Analytics and logs | Separate datasets/sinks and write credentials. Every event carries the explicit environment identifier. If a provider cannot isolate non-production data, Staging uses a stub or keeps that export disabled rather than sharing the Production sink. Staging synthetic traffic never contributes to Production SLOs, click totals, dashboards, or alerts. |
 | Third-party keys | Prefer distinct sandbox/Staging and Production keys. If a provider cannot issue isolated non-production credentials, keep that integration disabled or use a deterministic stub in Staging until the founder reviews the risk; never reuse a Production key by convenience. |
@@ -94,22 +95,27 @@ state, credentials, and configuration never move with the artifact.
 
 ## Configuration matrix
 
-This matrix defines configuration names and ownership only. It contains no
-secret values, project identifiers, hostnames, routes, or CORS rules.
+This matrix defines configuration names, ownership, and approved Order 6
+placeholder/route shapes only. It contains no secret value or actual project
+identifier and does not configure a hostname, route, or CORS rule.
 
 | Configuration name | Local | Staging | Production | Secret? |
 | --- | --- | --- | --- | --- |
 | `OP4N_ENV` | Literal `local` | Literal `staging` | Literal `production` | No |
 | `RELEASE_SHA` | Current working revision or test value | Deployed release revision | Deployed release revision | No |
 | `CONFIG_VERSION` | Local/test manifest version | Staging manifest version | Production manifest version | No |
-| `API_BASE_URL` | Mock/local adapter value | Staging-specific value; concrete value deferred to Order 6 | Production-specific value; concrete value deferred to Order 6 | No |
+| `API_BASE_URL` | Mock/local adapter or explicitly approved Staging value | `https://<staging-project-ref>.supabase.co/functions/v1/op4n-api` placeholder shape | `https://<production-project-ref>.supabase.co/functions/v1/op4n-api` placeholder shape | No; project references remain environment-scoped and are validated at deployment |
 | `SUPABASE_PROJECT_REF` | Absent or disposable local value | Staging project reference | Production project reference | Treat as configuration, not authority |
 | `SUPABASE_URL` | Absent or disposable local value | Staging project value | Production project value | No; value still environment-scoped |
 | `SUPABASE_PUBLISHABLE_KEY` | Absent or disposable local publishable value | Staging Publishable key for public clients under Staging RLS | Production Publishable key for public clients under Production RLS | Public but environment-scoped; not privileged authority |
 | `SUPABASE_SECRET_KEY` | Absent | Staging backend-only privileged secret | Production backend-only privileged secret | Yes; privileged |
+| `FOUNDER_AUTH_ISSUER` | Absent/local test value | Expected Staging Supabase Auth issuer | Expected Production Supabase Auth issuer | No; exact environment-scoped value |
+| `FOUNDER_AUTH_AUDIENCE` | Absent/local test value | Expected Staging founder JWT audience | Expected Production founder JWT audience | No; exact environment-scoped value |
+| `FOUNDER_SUBJECT_ALLOWLIST` | Synthetic/local founder subject only | Stable Staging founder user ID | Stable Production founder user ID | Sensitive configuration; never public or logged |
+| `INTERNAL_SERVICE_CREDENTIAL` | Absent or local stub | Rotatable Staging-only Worker/internal credential | Rotatable Production-only Worker/internal credential | Yes; not a Publishable key, Secret key, or founder JWT |
 | `DATABASE_URL` | Disposable local database only | Staging-only connection secret | Production-only connection secret | Yes |
 | `WORKER_ENV` | Local simulation | Literal `staging` binding | Literal `production` binding | No |
-| `WORKER_ROUTE_CONFIG` | Absent/local simulation | Staging-scoped; concrete route deferred to Order 6 | Production-scoped; concrete route deferred to Order 6 | No |
+| `WORKER_ROUTE_CONFIG` | Absent/local simulation | Planned `https://staging.op4n.me/{code}` route contract | `https://op4n.me/{code}` route contract | No; this document does not deploy either route |
 | `STORAGE_BUCKET_ID` | Fixture directory or disposable value | Staging synthetic-only bucket | Production bucket | No; value environment-scoped |
 | `ANALYTICS_SINK_ID` | Local test sink | Staging dataset/partition | Production dataset/partition | No; write authority is separate |
 | `MONITORING_WRITE_KEY` | Absent or local stub | Staging-only secret | Production-only secret | Yes |
@@ -213,9 +219,9 @@ flowchart LR
 4. **Verification.** Run integration, migration, fault-isolation, security,
    redirect SLO instrumentation, synthetic redirect, report/moderation, and
    rollback checks. Staging evidence never counts as Production SLO evidence.
-   Production promotion remains blocked until Order 6 defines the hosted Staging
-   entrypoint, API/Worker routes, and CORS and the resulting end-to-end Staging
-   flow passes.
+   Production promotion remains blocked until the Order 6 hosted Staging
+   entrypoint, API/Worker routes, and CORS contract is implemented and the
+   resulting end-to-end Staging flow passes.
 5. **Approval and Production preflight.** The founder reviews the Order 6
    end-to-end evidence, migration/rollback readiness, configuration diff by name,
    known limitations, and exact Production target identity. The gate then
@@ -291,28 +297,31 @@ bounded verification, and follow-up review.
 These controls guarantee isolation by absence of authority and by independent
 provider projects/scopes, not by relying on naming conventions alone.
 
-## Order 6 deferrals
+## Order 6 contract resolution and deployment gate
 
-Order 6, Define API contracts and shared error model, owns these concrete
-decisions:
+Order 6 resolves the contract-level deferrals as follows:
 
-- Staging and Production API hostnames and `API_BASE_URL` values;
-- public API resource routes beneath `/api/v1`;
-- public Staging entrypoint and access pattern;
-- Cloudflare Worker hostnames and route values for each environment;
-- allowed CORS origins, methods, headers, credentials mode, and preflight policy;
-- browser-visible error envelope and environment-safe public diagnostics.
+- one `op4n-api` Supabase Edge Function router per environment;
+- `API_BASE_URL` uses the environment project function URL placeholder shape;
+- resources are beneath `${API_BASE_URL}/api/v1`;
+- planned Staging entrypoints are `https://staging.op4n.com` and
+  `https://staging.op4n.me/{code}`;
+- Production browser CORS accepts only `https://op4n.com`;
+- Staging browser CORS accepts only `https://staging.op4n.com` and
+  `http://127.0.0.1:5500`; and
+- internal redirect, click, and health operations have no browser CORS.
 
-Order 3 decides that these values must be separate and correctly scoped; it does
-not choose the values. Order 6 must preserve GitHub Pages as the Production
-frontend, the Production `op4n.me` redirect boundary, the two-hosted-environment
-limit, and the rule that Local and Staging receive no privileged Production
-authority.
+The full resource, error, idempotency, rate-limit, and preflight contract is in
+the [R1 API contract](../api/r1-api-contract.md). These are planned contract
+values, not deployed infrastructure. Order 6 preserves GitHub Pages as the
+Production frontend, the Production `op4n.me` redirect boundary, the
+two-hosted-environment limit, and the rule that Local and Staging receive no
+privileged Production authority.
 
-Order 6 is a hard Production promotion dependency. Order 3 neither chooses nor
-creates a hosted Staging frontend, but no release may be promoted to Production
-until Order 6 defines the Staging entrypoint, environment-specific API and Worker
-routes, and CORS, and an end-to-end Staging flow using those decisions has passed.
+Order 6 remains a hard Production promotion dependency. Order 3 does not create
+a hosted Staging frontend, and the contract alone does not clear the gate. No
+release may be promoted until later implementation creates the approved
+entrypoints/routes/CORS and the resulting end-to-end Staging flow passes.
 
 ## PO review decisions
 
@@ -325,14 +334,15 @@ The Product Owner should confirm:
    privileged handling of each environment's Secret key;
 4. the two-project Free-plan capacity, pause behavior, active/healthy preflights,
    and no keep-alive or paid-plan change in Order 3;
-5. GitHub Pages as Production frontend with no hosted Staging frontend selected
-   before Order 6 and no Production promotion before Order 6 end-to-end Staging
-   verification passes;
+5. GitHub Pages as Production frontend, the planned but uncreated Order 6
+   Staging entrypoint, and no Production promotion before the deployed Order 6
+   end-to-end Staging verification passes;
 6. synthetic-only Staging data and the prohibition on Production copies;
 7. sandbox/stub behavior when a third party cannot provide a separate key;
 8. founder approval as the Production promotion gate for a one-person R1
    operation;
-9. the concrete hostname, route, entrypoint, and CORS deferrals to Order 6.
+9. the Order 6 hostname, route, entrypoint, and CORS contract plus the remaining
+   requirement for deployed end-to-end Staging verification.
 
 Approval changes this document's status; it does not create or change hosted
 infrastructure.
@@ -348,6 +358,6 @@ infrastructure.
 | Supabase Free-tier capacity and pause behavior are handled. | The two active projects are allocated to Staging/Production; Staging and Production health preflights fail closed; Staging pause is excluded from Production SLOs; no keep-alive, additional project, or plan change is authorized. |
 | Synthetic fixtures are deterministic and safe. | Versioned fixed records, safe domains, synthetic markers, idempotent seeds, non-Production allowlists, and fail-closed reset rules are specified. |
 | Promotion, migration, verification, and rollback safeguards are documented. | Local → Staging → Production flow, independent migration ledgers, project-health preflights, approval gate, target checks, and compatible rollback rules are explicit. |
-| Order 1 boundaries and Order 6 deferrals are preserved. | GitHub Pages remains Production frontend; Production redirect architecture is unchanged; API/Worker hostnames, routes, entrypoints, and CORS remain undecided. |
-| Order 6 gates Production promotion. | No hosted Staging frontend is selected here; promotion is blocked until Order 6 defines Staging entrypoint/API/Worker/CORS decisions and their end-to-end Staging flow passes. |
+| Order 1 boundaries and Order 6 contract are preserved. | GitHub Pages remains Production frontend; Production redirect architecture is unchanged; the environment function URL shape, planned entrypoints, routes, and exact CORS origins are cross-linked without deployment. |
+| Order 6 gates Production promotion. | No hosted Staging frontend is created here; promotion remains blocked until the approved Staging entrypoint/API/Worker/CORS contract is implemented and its end-to-end flow passes. |
 | No additional hosted environment or live infrastructure change is introduced. | Local is unhosted; Development, Preview, and QA are excluded; this document authorizes no project, route, DNS, secret, or deployment mutation. |
