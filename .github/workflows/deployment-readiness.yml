@@ -1,0 +1,91 @@
+name: R1 deployment readiness (non-mutating)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Readiness target; this workflow never deploys
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      release_sha:
+        description: Exact 40-character release SHA
+        required: true
+        type: string
+      artifact_digest:
+        description: Sanitized SHA-256 release artifact digest
+        required: true
+        type: string
+      staging_release_sha:
+        description: Exact Staging-verified SHA; required for Production readiness
+        required: false
+        type: string
+      staging_artifact_digest:
+        description: Staging-verified artifact digest; required for Production readiness
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-readiness-${{ inputs.target }}
+  cancel-in-progress: false
+
+env:
+  EXECUTION_MODE: READINESS_ONLY
+
+jobs:
+  non-mutating-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact candidate without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use the locked validation runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Prove exact release identity
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: test "$(git rev-parse HEAD)" = "$REQUESTED_RELEASE_SHA"
+      - name: Re-run credential-free quality gates
+        run: |
+          node tests/dependency-build-check.mjs
+          node tests/secret-hygiene.mjs
+          node tests/foundation-validation.mjs
+          node tests/deployment-readiness.mjs --self-test
+          node tests/release-artifact.mjs --self-test
+          node tests/run-prototype-smoke.mjs
+      - name: Rebuild and verify candidate identity
+        env:
+          REQUESTED_ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+        run: |
+          node tests/release-artifact.mjs .ci-artifacts "$REQUESTED_RELEASE_SHA"
+          node -e 'const m=require("./.ci-artifacts/release-manifest.json");if(m.artifactDigest!==process.env.REQUESTED_ARTIFACT_DIGEST)process.exit(1)'
+      - name: Confirm readiness-only boundary
+        env:
+          TARGET: ${{ inputs.target }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+          STAGING_RELEASE_SHA: ${{ inputs.staging_release_sha }}
+          STAGING_ARTIFACT_DIGEST: ${{ inputs.staging_artifact_digest }}
+        run: |
+          test "$EXECUTION_MODE" = "READINESS_ONLY"
+          test "$TARGET" = "staging" || test "$TARGET" = "production"
+          if test "$TARGET" = "production"; then
+            test "$RELEASE_SHA" = "$STAGING_RELEASE_SHA"
+            test "$ARTIFACT_DIGEST" = "$STAGING_ARTIFACT_DIGEST"
+            echo "BLOCKED: Production deployment remains disabled until protected environment approval and mutable gates exist."
+          else
+            echo "READINESS ONLY: Staging provider targets are not configured or mutated."
+          fi
+          echo "NOT_DEPLOYED"

@@ -1,0 +1,53 @@
+name: R1 quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the reviewed revision without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use the locked validation runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Check locked dependencies and build inputs when present
+        run: node tests/dependency-build-check.mjs
+      - name: Scan repository, bundle, and history for credential material
+        run: node tests/secret-hygiene.mjs
+      - name: Validate repository, docs, API, Mermaid, and workflow contracts
+        run: node tests/foundation-validation.mjs
+      - name: Exercise deployment and rollback fail-closed rules
+        run: node tests/deployment-readiness.mjs --self-test
+      - name: Prove release artifacts ignore dirty working-tree bytes
+        run: node tests/release-artifact.mjs --self-test
+      - name: Run the current prototype smoke test in headless Chrome
+        run: node tests/run-prototype-smoke.mjs
+      - name: Build the immutable release candidate and sanitized manifest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node tests/release-artifact.mjs .ci-artifacts "${{ github.sha }}"
+      - name: Retain the non-deployed release candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: op4n-release-${{ github.sha }}
+          path: .ci-artifacts/
+          if-no-files-found: error
+          retention-days: 30

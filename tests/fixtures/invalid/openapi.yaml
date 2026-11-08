@@ -1,0 +1,15 @@
+openapi: 3.1.0
+info:
+  title: Invalid semantic fixture
+  version: 1.0.0
+paths:
+  /broken:
+    get:
+      operationId: brokenFixture
+      responses:
+        "200":
+          description: Broken unresolved response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DoesNotExist"

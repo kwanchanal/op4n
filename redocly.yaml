@@ -1,0 +1,13 @@
+apis:
+  r1@v1:
+    root: docs/api/r1-openapi.yaml
+
+extends:
+  - recommended
+
+rules:
+  no-unresolved-refs: error
+  no-invalid-media-type-examples: error
+  no-invalid-parameter-examples: error
+  operation-operationId-unique: error
+  operation-operationId: error

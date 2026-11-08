@@ -1,0 +1,17 @@
+openapi: 3.1.0
+info:
+  title: Duplicate operation fixture
+  version: 1.0.0
+paths:
+  /first:
+    get:
+      operationId: duplicateFixtureOperation
+      responses:
+        "204":
+          description: Empty
+  /second:
+    get:
+      operationId: duplicateFixtureOperation
+      responses:
+        "204":
+          description: Empty

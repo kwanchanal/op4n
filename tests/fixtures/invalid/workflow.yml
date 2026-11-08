@@ -1,0 +1,4 @@
+name: Invalid YAML fixture
+jobs:
+  broken:
+    runs-on: [ubuntu-latest

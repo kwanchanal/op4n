@@ -31,3 +31,7 @@ service-account.*.json
 *.keystore
 *.crt
 *.cer
+
+# Local/CI-generated validation and release-readiness evidence.
+.ci-artifacts/
+node_modules/

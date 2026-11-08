@@ -1,11 +1,12 @@
 import process from "node:process";
 
 const port = Number(process.argv[2] || 9228);
+const sitePort = Number(process.argv[3] || 4173);
 const base = `http://127.0.0.1:${port}`;
 const pages = await (await fetch(`${base}/json`)).json();
 const page = pages.find((item) =>
   item.type === "page" &&
-  (item.url.includes("127.0.0.1:4173") || item.url.includes("/Github/openme/index.html"))
+  (item.url.includes(`127.0.0.1:${sitePort}`) || item.url.includes("/Github/openme/index.html"))
 );
 if (!page) throw new Error("Prototype page was not found in the Chrome debug session.");
 

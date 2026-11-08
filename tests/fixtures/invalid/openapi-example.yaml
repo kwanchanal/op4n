@@ -1,0 +1,21 @@
+openapi: 3.1.0
+info:
+  title: Invalid example fixture
+  version: 1.0.0
+paths:
+  /broken-example:
+    get:
+      operationId: brokenExampleFixture
+      responses:
+        "200":
+          description: Example does not match its schema
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+              example:
+                count: not-an-integer
