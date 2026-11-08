@@ -1,3 +1,33 @@
 .DS_Store
 dist/
 showcase/kohtao-divesite/resource/
+
+# Local environment and runtime secret files. Keep reviewed example files public.
+.env
+.env.*
+!.env.example
+supabase/functions/.env
+supabase/functions/.env.*
+.dev.vars
+.dev.vars.*
+*.dev.vars
+
+# Local provider state and secret exports. Reviewed configuration remains tracked.
+.wrangler/
+credentials.json
+credentials.*.json
+*-credentials.json
+*.credentials.json
+service-account.json
+service-account.*.json
+*-service-account.json
+
+# Private key and certificate material.
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
