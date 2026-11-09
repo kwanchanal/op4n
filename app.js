@@ -143,9 +143,7 @@
     if (!destinationUrl) return "";
 
     const parsedUrl = new URL(destinationUrl);
-    const safePath = parsedUrl.pathname || "/";
-    const hiddenSuffix = parsedUrl.search || parsedUrl.hash ? "?…" : "";
-    return `${parsedUrl.origin}${safePath}${hiddenSuffix}`;
+    return parsedUrl.origin;
   }
 
   function setUrlError(message = "") {
@@ -153,25 +151,8 @@
     elements.linkUrl.setAttribute("aria-invalid", String(Boolean(message)));
   }
 
-  function validateDestination(value) {
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
-      return { valid: false, message: "Enter a destination URL." };
-    }
-
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(trimmedValue);
-    } catch {
-      return { valid: false, message: "Enter a complete HTTP or HTTPS URL." };
-    }
-
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return { valid: false, message: "Only HTTP and HTTPS destination URLs are supported." };
-    }
-
-    return { valid: true, url: parsedUrl.href };
-  }
+  const { validateDestinationUrlInput: validateDestination } =
+    window.op4nDestinationUrlValidation;
 
   function setCreatePhase(phase, message = "", options = {}) {
     state.createPhase = phase;
@@ -558,6 +539,7 @@
       return;
     }
     setUrlError();
+    elements.linkUrl.value = validation.url;
 
     state.requestNumber += 1;
     state.lastCreateRequest = {

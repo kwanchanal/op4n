@@ -67,15 +67,15 @@
               <div class="field">
                 <label for="linkUrl">URL</label>
                 <input id="linkUrl" name="url" type="url" inputmode="url" autocomplete="url" required aria-describedby="linkUrlError" placeholder="https://example.com/my-long-url" />
-                <p class="field-error" id="linkUrlError" aria-live="polite"></p>
+                <p class="field-error" id="linkUrlError" role="alert" aria-live="assertive"></p>
               </div>
               <p class="field-hint form-intro-hint">Paste Your Link Here</p>
-              <button class="cta" type="submit" data-access="guest-action" data-create-submit>Make Link</button>
-              <p class="form-cta-note">It's Free! and No Account Needed - Make yourself better link now</p>
               <aside class="guest-link-disclosure" aria-label="Guest link visibility">
                 <span class="material-symbols-outlined" aria-hidden="true">info</span>
-                <p>Guest links are public and read-only. Your title, short URL, safe destination summary, and total click count may appear in Latest Links and exact search. Destination query parameters and fragments stay hidden. You cannot edit or delete the link later.</p>
+                <p>Guest links are public and read-only. Your title, short link, destination website, and click count may appear publicly. You can’t edit or delete the link later.</p>
               </aside>
+              <button class="cta" type="submit" data-access="guest-action" data-create-submit>Make Link</button>
+              <p class="form-cta-note">It's Free! and No Account Needed - Make yourself better link now</p>
               <div class="form-feedback">
                 <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
                 <button class="form-retry-button" id="formRetryButton" type="button" hidden>Retry</button>
@@ -209,6 +209,7 @@
     <script src="data/mock-report-config.js?v=id25"></script>
     <script src="data/qr-showcase-config.js?v=id25"></script>
     <script src="services/prototype-storage.js?v=id25"></script>
+    <script src="services/destination-url-validation.js?v=r1-order11-18"></script>
     <script src="services/mock-link-service.js?v=id25"></script>
     <script src="services/mock-report-service.js?v=id25"></script>
     <script src="shared-sidebar.js?v=id25"></script>

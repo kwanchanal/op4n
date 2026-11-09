@@ -72,6 +72,19 @@ const initial = await evaluate(`({
   createdActive: document.querySelector('[data-link-filter="created"]')?.getAttribute('aria-pressed'),
   promo: Boolean(document.querySelector('#adPanel')),
   disclosure: document.querySelector('.guest-link-disclosure')?.textContent || '',
+  disclosureBeforeSubmit: Boolean(
+    document.querySelector('.guest-link-disclosure')?.compareDocumentPosition(
+      document.querySelector('[data-create-submit]')
+    ) & Node.DOCUMENT_POSITION_FOLLOWING
+  ),
+  disclosureVisible: (() => {
+    const disclosure = document.querySelector('.guest-link-disclosure');
+    return Boolean(disclosure && disclosure.getClientRects().length && getComputedStyle(disclosure).visibility !== 'hidden');
+  })(),
+  urlInputContract: (() => {
+    const input = document.querySelector('#linkUrl');
+    return input?.type === 'url' && input.required && input.name === 'url';
+  })(),
   lockedNav: [...document.querySelectorAll('.nav-link.is-locked')].every((item) => item.tagName === 'BUTTON' && item.getAttribute('aria-disabled') === 'true' && !item.hasAttribute('href')),
   fetches: performance.getEntriesByType('resource').filter((item) => ['fetch', 'xmlhttprequest'].includes(item.initiatorType)).length
 })`);
@@ -80,6 +93,8 @@ assert(initial.favicon === "favicon/op4n-star.svg" && initial.faviconType === "i
 assert(!initial.exampleMenu && initial.exampleCards === 0 && initial.createdActive === "true", "Created Link is the only available view");
 assert(initial.promo, "promotional panel is preserved");
 assert(initial.disclosure.includes("public and read-only"), "Guest disclosure is visible");
+assert(initial.disclosureBeforeSubmit && initial.disclosureVisible, "Guest disclosure is visible before Make Link");
+assert(initial.urlInputContract, "destination URL is the required URL input on the creation form");
 assert(initial.lockedNav, "non-live navigation remains locked");
 assert(initial.fetches === 0, "no production fetch/XHR occurs");
 
@@ -102,23 +117,67 @@ assert(fixtures.destinationFields === fixtures.count, "every public card uses th
 await evaluate(`document.querySelector('#linkUrl').value = ''; document.querySelector('#linkForm').requestSubmit()`);
 await sleep(50);
 assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes("Enter a destination"), "blank URL stays inline");
+const accessibleError = await evaluate(`({
+  invalid: document.querySelector('#linkUrl').getAttribute('aria-invalid'),
+  describedBy: document.querySelector('#linkUrl').getAttribute('aria-describedby'),
+  errorRole: document.querySelector('#linkUrlError').getAttribute('role'),
+  focused: document.activeElement === document.querySelector('#linkUrl')
+})`);
+assert(
+  accessibleError.invalid === "true" && accessibleError.describedBy === "linkUrlError" && accessibleError.errorRole === "alert" && accessibleError.focused,
+  "URL errors are announced next to the field and focus returns to the invalid input"
+);
 
-await evaluate(`document.querySelector('#linkUrl').value = 'javascript:alert(1)'; document.querySelector('#linkForm').requestSubmit()`);
+await evaluate(`document.querySelector('#linkUrl').value = 'not a URL'; document.querySelector('#linkForm').requestSubmit()`);
 await sleep(50);
-assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes("HTTP"), "unsupported URL scheme is rejected");
+assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes("complete HTTP or HTTPS"), "malformed URL receives clear feedback");
+
+for (const unsupported of ['javascript:alert(1)', 'file:///tmp/example', 'mailto:test@example.com']) {
+  await evaluate(`document.querySelector('#linkUrl').value = ${JSON.stringify(unsupported)}; document.querySelector('#linkForm').requestSubmit()`);
+  await sleep(50);
+  assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes("HTTP"), `${unsupported.split(':')[0]} URL scheme is rejected`);
+}
 
 await evaluate(`(() => {
   const input = document.querySelector('#linkUrl');
-  input.value = '  https://example.com/smoke?x=1  ';
+  input.value = '  https://example.com/smoke?x=1#private  ';
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  const form = document.querySelector('#linkForm');
-  form.requestSubmit();
-  form.requestSubmit();
+  document.querySelector('#linkTitle').value = '';
+  input.focus();
 })()`);
+await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+await evaluate(`document.querySelector('#linkForm').requestSubmit()`);
 await sleep(450);
 let createdCount = await evaluate(`document.querySelectorAll('.public-link-card').length`);
-assert(createdCount === 5, "double submission creates exactly one additional result");
+assert(createdCount === 5, "keyboard submission works and duplicate submission creates exactly one result");
+assert((await evaluate(`document.querySelector('#linkUrl').value`)) === "https://example.com/smoke?x=1#private", "valid URL whitespace is trimmed before the mock request");
+assert((await evaluate(`[
+  ...document.querySelectorAll('.public-link-card .link-title')
+].some((item) => item.textContent.trim() === 'Untitled link')`)), "empty optional Title is accepted with a presentation fallback");
+assert((await evaluate(`(() => {
+  const card = [...document.querySelectorAll('.public-link-card')].find((item) =>
+    item.querySelector('.link-title')?.textContent.trim() === 'Untitled link'
+  );
+  return card && ![card.textContent, ...[...card.querySelectorAll('*')].flatMap((item) =>
+    [...item.attributes].map((attribute) => attribute.value)
+  )].some((value) => String(value).includes('x=1') || String(value).includes('private'));
+})()`)), "created public card DOM hides destination query parameters and fragments");
 assert((await evaluate(`document.querySelector('#formStatus').textContent`)).includes("prototype data only"), "success is labeled prototype-only");
+
+await evaluate(`(() => {
+  document.querySelector('#linkTitle').value = '<img src=x onerror=globalThis.__unsafeTitle = true>';
+  document.querySelector('#linkUrl').value = 'https://example.com/titled';
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(350);
+createdCount += 1;
+const safeTitle = await evaluate(`(() => {
+  const expected = '<img src=x onerror=globalThis.__unsafeTitle = true>';
+  const title = [...document.querySelectorAll('.public-link-card .link-title')].find((item) => item.textContent === expected);
+  return { found: Boolean(title), injectedImage: Boolean(title?.querySelector('img')), executed: Boolean(globalThis.__unsafeTitle) };
+})()`);
+assert(safeTitle.found && !safeTitle.injectedImage && !safeTitle.executed, "optional Title is rendered as inert text");
 
 for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination", "server-error", "malformed-response"]) {
   await evaluate(`(() => {
@@ -180,7 +239,7 @@ const cardContract = await evaluate(`(() => {
 })()`);
 assert(cardContract.shortUrl.startsWith("https://op4n.me/"), "card uses canonical short URL");
 assert(cardContract.destinationLabel === "Destination URL :", "card labels the destination separately");
-assert(cardContract.destinationControl === "BUTTON" && cardContract.longDestinationSummary.endsWith("?…"), "destination is a safe summary control when query details are hidden");
+assert(cardContract.destinationControl === "BUTTON" && cardContract.longDestinationSummary === "https://example.com", "destination summary is limited to the normalized origin");
 assert(!cardContract.fullQueryExposed, "public card DOM does not expose destination query parameters");
 assert(cardContract.toolbar && cardContract.visibleClicks, "compact toolbar keeps Clicks visible as a number");
 assert(cardContract.registeredLabels, "all Registered previews announce their locked state");

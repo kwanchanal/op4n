@@ -25,6 +25,7 @@
   "message-icons/message6.png",
   "services/mock-link-service.js",
   "services/mock-report-service.js",
+  "services/destination-url-validation.js",
   "services/prototype-storage.js",
   "shared-sidebar.js",
   "showcase/brain-gym/favicon/logo.png",
