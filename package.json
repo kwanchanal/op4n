@@ -7,7 +7,8 @@
   },
   "scripts": {
     "validate:foundation": "node tests/foundation-validation.mjs",
-    "test:artifact": "node tests/release-artifact.mjs --self-test"
+    "test:artifact": "node tests/release-artifact.mjs --self-test",
+    "test:server": "node --test tests/server/*.test.mjs"
   },
   "devDependencies": {
     "@redocly/cli": "2.76.0",

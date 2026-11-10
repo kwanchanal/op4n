@@ -1,0 +1,7 @@
+project_id = "op4n-local"
+
+[experimental]
+stack = true
+
+[functions.op4n-api]
+verify_jwt = false

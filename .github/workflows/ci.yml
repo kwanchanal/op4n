@@ -30,6 +30,8 @@ jobs:
           cache: npm
       - name: Check locked dependencies and build inputs when present
         run: node tests/dependency-build-check.mjs
+      - name: Run backend unit and contract tests
+        run: npm run test:server
       - name: Scan repository, bundle, and history for credential material
         run: node tests/secret-hygiene.mjs
       - name: Validate repository, docs, API, Mermaid, and workflow contracts
