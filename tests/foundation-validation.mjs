@@ -161,6 +161,66 @@ function validateWorkflow(path, { deploymentReadiness = false } = {}) {
   console.log(`PASS workflow YAML semantic parse and policy checks: ${repositoryPath(path)}`);
 }
 
+// The Staging deploy workflow is the only workflow allowed to use secrets and
+// a GitHub Environment. It must stay manual, Staging-only, queued, pinned, and
+// keep every secret inside the protected `staging` job.
+function deployWorkflowFailures(text, workflow) {
+  const problems = [];
+  if (workflow.permissions?.contents !== "read" || Object.keys(workflow.permissions ?? {}).length !== 1) {
+    problems.push("lacks explicit minimum top-level permissions");
+  }
+  const triggers = Object.keys(workflow.on ?? {});
+  if (triggers.length !== 1 || triggers[0] !== "workflow_dispatch") problems.push("must be manual workflow_dispatch only");
+  if (workflow.concurrency?.["cancel-in-progress"] !== false) problems.push("deploy concurrency can cancel an in-progress run");
+  if (workflow.env?.DEPLOY_TARGET !== "staging") problems.push("DEPLOY_TARGET must be staging");
+  for (const match of text.matchAll(/uses:\s*([^@\s]+)@([^\s#]+)/g)) {
+    if (!/^[0-9a-f]{40}$/.test(match[2])) problems.push(`action ${match[1]} is not pinned to a full SHA`);
+  }
+  if (/environment:\s*["']?production/i.test(text)) problems.push("must not reference a production environment");
+  const jobs = Object.entries(workflow.jobs ?? {});
+  const protectedJobs = jobs.filter(([, job]) => job.environment !== undefined);
+  if (protectedJobs.length !== 1 || protectedJobs[0][1].environment !== "staging") {
+    problems.push("exactly one job must bind the staging environment");
+  }
+  for (const [name, job] of jobs) {
+    const body = JSON.stringify(job);
+    if (/\$\{\{\s*secrets\./.test(body) && job.environment !== "staging") {
+      problems.push(`job ${name} references secrets outside the staging environment`);
+    }
+    for (const step of job.steps ?? []) {
+      if (String(step.uses ?? "").startsWith("actions/checkout@") && step.with?.["persist-credentials"] !== false) {
+        problems.push(`job ${name} checkout persists credentials`);
+      }
+    }
+  }
+  const protectedJob = protectedJobs[0]?.[1];
+  if (protectedJob && !(protectedJob.needs === "verify-candidate" || protectedJob.needs?.includes?.("verify-candidate"))) {
+    problems.push("staging job must depend on the credential-free verify-candidate job");
+  }
+  return problems;
+}
+
+function validateDeployWorkflow(path) {
+  const text = readFileSync(path, "utf8");
+  const workflow = parseYaml(text, repositoryPath(path));
+  for (const problem of deployWorkflowFailures(text, workflow)) fail(`${repositoryPath(path)} ${problem}`);
+
+  const variants = [
+    ["production environment", text.replace("environment: staging", "environment: production")],
+    ["push trigger", text.replace("on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:")],
+    ["cancel in progress", text.replace("cancel-in-progress: false", "cancel-in-progress: true")],
+    ["unpinned action", text.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v4")],
+    ["secret in verify job", text.replace("REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}", "REQUESTED_RELEASE_SHA: ${{ secrets.SUPABASE_PROJECT_REF }}")],
+  ];
+  for (const [label, variant] of variants) {
+    if (variant === text) throw new Error(`deploy workflow negative fixture did not apply: ${label}`);
+    if (deployWorkflowFailures(variant, parseYaml(variant, label)).length === 0) {
+      throw new Error(`deploy workflow policy did not reject: ${label}`);
+    }
+  }
+  console.log(`PASS deploy workflow policy and ${variants.length} negative variants: ${repositoryPath(path)}`);
+}
+
 async function negativeSelfTests() {
   for (const fixture of [
     "tests/fixtures/invalid/openapi.yaml",
@@ -193,6 +253,7 @@ await validateMarkdown(markdown);
 validateOpenApi(join(root, "docs/api/r1-openapi.yaml"));
 validateWorkflow(join(root, ".github/workflows/ci.yml"));
 validateWorkflow(join(root, ".github/workflows/deployment-readiness.yml"), { deploymentReadiness: true });
+validateDeployWorkflow(join(root, ".github/workflows/deploy-staging.yml"));
 await negativeSelfTests();
 
 if (failures.length) {

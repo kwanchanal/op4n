@@ -13,8 +13,10 @@ export function unavailableSafetyPort() {
   return deterministicSafetyPort("unavailable");
 }
 
-export function createConfiguredSafetyPort({ environment, mode }) {
-  if (environment === "local" && mode === "deterministic-approved") {
+// `safetyKind` comes from resolveRuntimeModes, which already refuses
+// deterministic modes in Production.
+export function createConfiguredSafetyPort({ safetyKind }) {
+  if (safetyKind === "deterministic") {
     return deterministicSafetyPort("approved");
   }
   return unavailableSafetyPort();

@@ -1,0 +1,166 @@
+name: R1 Staging deploy
+
+# Deploys one exact, CI-verified release to Staging only. Production promotion
+# is not implemented here; it is owned by the R1 production cutover card.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character release SHA already on main
+        required: true
+        type: string
+      artifact_digest:
+        description: Sanitized SHA-256 artifact digest from the CI release candidate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  DEPLOY_TARGET: staging
+  SUPABASE_CLI: supabase@3.0.0
+  WRANGLER_CLI: wrangler@4.158.0
+  PAGES_PROJECT: op4n-staging
+
+jobs:
+  verify-candidate:
+    name: Verify release candidate (no credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate dispatch inputs
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUESTED_ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+        run: |
+          [[ "$REQUESTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "release_sha must be a full lowercase SHA"; exit 1; }
+          [[ "$REQUESTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "artifact_digest must be SHA-256"; exit 1; }
+      - name: Check out the exact candidate without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use the locked validation runtime
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Prove release identity and that it is on main
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED_RELEASE_SHA"
+          git merge-base --is-ancestor "$REQUESTED_RELEASE_SHA" origin/main
+      - name: Re-run credential-free quality gates
+        run: |
+          node tests/dependency-build-check.mjs
+          npm run test:server
+          node tests/secret-hygiene.mjs
+          node tests/foundation-validation.mjs
+          node tests/deployment-readiness.mjs --self-test
+          node tests/release-artifact.mjs --self-test
+          node tests/staging-preflight.mjs --self-test
+          node tests/staging-smoke.mjs --self-test
+          node tests/run-prototype-smoke.mjs
+      - name: Rebuild and verify candidate identity
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUESTED_ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+        run: |
+          node tests/release-artifact.mjs .ci-artifacts "$REQUESTED_RELEASE_SHA"
+          node -e 'const m=require("./.ci-artifacts/release-manifest.json");if(m.artifactDigest!==process.env.REQUESTED_ARTIFACT_DIGEST){console.error("artifact digest mismatch");process.exit(1)}'
+
+  deploy-staging:
+    name: Deploy to Staging (founder approval required)
+    needs: verify-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - name: Check out the exact candidate without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use the locked validation runtime
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 24.15.0
+      - name: Rebuild the verified artifact
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUESTED_ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED_RELEASE_SHA"
+          node tests/release-artifact.mjs .ci-artifacts "$REQUESTED_RELEASE_SHA"
+          node -e 'const m=require("./.ci-artifacts/release-manifest.json");if(m.artifactDigest!==process.env.REQUESTED_ARTIFACT_DIGEST){console.error("artifact digest mismatch");process.exit(1)}'
+      - name: Preflight the Staging project before any mutation
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: node tests/staging-preflight.mjs
+      - name: Apply database migrations to Staging
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: npx --yes "$SUPABASE_CLI" db push --remote="$SUPABASE_PROJECT_REF" --yes
+      - name: Set Staging function secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          STAGING_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          HMAC_KEY: ${{ secrets.DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT }}
+          HMAC_VERSION: ${{ secrets.DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT }}
+        run: |
+          umask 077
+          secrets_file="$(mktemp)"
+          trap 'rm -f "$secrets_file"' EXIT
+          {
+            echo "OP4N_ENVIRONMENT=staging"
+            echo "OP4N_SAFETY_MODE=deterministic-approved"
+            echo "OP4N_RATE_LIMIT_MODE=deterministic"
+            echo "OP4N_SUPABASE_SECRET_KEY=$STAGING_SECRET_KEY"
+            echo "DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT=$HMAC_KEY"
+            echo "DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT=$HMAC_VERSION"
+          } > "$secrets_file"
+          npx --yes "$SUPABASE_CLI" secrets set --remote="$SUPABASE_PROJECT_REF" --env-file "$secrets_file" --yes
+      - name: Deploy the op4n-api Edge Function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: npx --yes "$SUPABASE_CLI" functions deploy op4n-api --remote="$SUPABASE_PROJECT_REF" --no-verify-jwt --use-api --yes
+      - name: Publish the frontend artifact to Cloudflare Pages (Staging)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT")"
+          if [ "$status" = "404" ]; then
+            npx --yes "$WRANGLER_CLI" pages project create "$PAGES_PROJECT" --production-branch main
+          elif [ "$status" != "200" ]; then
+            echo "Cloudflare Pages project lookup failed with status $status"; exit 1
+          fi
+          npx --yes "$WRANGLER_CLI" pages deploy .ci-artifacts/site \
+            --project-name "$PAGES_PROJECT" --branch main \
+            --commit-hash "$RELEASE_SHA" --commit-dirty=false
+      - name: Smoke-test the deployed Staging API
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: node tests/staging-smoke.mjs
+      - name: Record deployment state
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: echo "DEPLOYED target=$DEPLOY_TARGET release=$RELEASE_SHA"
