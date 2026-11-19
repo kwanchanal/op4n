@@ -199,12 +199,19 @@ the artifact digest from that SHA's CI release candidate.
       modes, `OP4N_SUPABASE_SECRET_KEY` (Supabase reserves the `SUPABASE_`
       prefix for function secrets), and the destination HMAC key and version.
    4. `supabase functions deploy op4n-api --no-verify-jwt --use-api`.
-   5. `wrangler pages deploy` publishes the allowlisted site to the
+   5. Writes `config/runtime-config.js` with `environment: "staging"`,
+      `adapter: "http"`, the Staging `op4n-api` base URL, and
+      `staging.op4n.me`. This is the only deployed file that differs from the
+      verified artifact, and it contains no secret; the committed default
+      keeps local development on the mock adapter.
+   6. `wrangler pages deploy` publishes the allowlisted site to the
       `op4n-staging` Cloudflare Pages project (created on first run).
-   6. `tests/staging-smoke.mjs` creates one synthetic link from Origin
+   7. `tests/staging-smoke.mjs` creates one synthetic link from Origin
       `https://staging.op4n.com` (expects `201`, the exact six PublicLinkCard
       fields, a `staging.op4n.me` short URL, and `no-store`) and sends a
-      preflight from Origin `https://op4n.com` (expects no allow-origin).
+      preflight from Origin `https://op4n.com` (expects no allow-origin), then
+      confirms `https://staging.op4n.com/config/runtime-config.js` selects
+      the http adapter for this project.
 
 Pinned tool versions: Supabase CLI `3.0.0`, wrangler `4.158.0`, run through
 `npx` because the Supabase package installs its binary in a postinstall script

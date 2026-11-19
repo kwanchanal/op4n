@@ -20,6 +20,9 @@ socket.onmessage = (event) => {
   if (message.method === "Runtime.exceptionThrown") {
     exceptions.push(message.params.exceptionDetails.text || "Uncaught exception");
   }
+  if (message.method === "Fetch.requestPaused") {
+    void handlePausedRequest(message.params);
+  }
   if (message.id && pending.has(message.id)) {
     pending.get(message.id)(message);
     pending.delete(message.id);
@@ -48,6 +51,59 @@ async function evaluate(expression) {
     throw new Error(response.result.exceptionDetails.text || "Evaluation failed");
   }
   return response.result.result.value;
+}
+
+// http-adapter phase: Chrome DevTools serves an http runtime config and a
+// same-origin fake API, so the real http adapter runs without any network.
+const fakeApiBase = `http://127.0.0.1:${sitePort}/__fake-api/functions/v1/op4n-api`;
+const httpRuntimeConfig = {
+  environment: "staging",
+  adapter: "http",
+  apiBaseUrl: fakeApiBase,
+  shortLinkHost: "staging.op4n.me",
+};
+const fakeApi = { requests: [], nextStatus: 201 };
+const fakeCard = {
+  aggregateTotalClicks: 0,
+  canonicalCode: "HTTP0001",
+  canonicalOpenUrl: "https://staging.op4n.me/HTTP0001",
+  canonicalShortUrl: "https://staging.op4n.me/HTTP0001",
+  displayTitle: "HTTP smoke",
+  safeDestinationSummary: { origin: "https://example.com", displayValue: "https://example.com" },
+};
+
+function fulfill(requestId, status, contentType, body) {
+  return send("Fetch.fulfillRequest", {
+    requestId,
+    responseCode: status,
+    responseHeaders: [
+      { name: "Content-Type", value: contentType },
+      { name: "Cache-Control", value: "no-store" },
+      { name: "X-Request-ID", value: "smoke-request-0001" },
+    ],
+    body: Buffer.from(body).toString("base64"),
+  });
+}
+
+async function handlePausedRequest({ requestId, request }) {
+  const url = new URL(request.url);
+  if (url.pathname.endsWith("/config/runtime-config.js")) {
+    return fulfill(requestId, 200, "text/javascript",
+      `window.OP4N_RUNTIME_CONFIG = Object.freeze(${JSON.stringify(httpRuntimeConfig)});`);
+  }
+  if (url.pathname.startsWith("/__fake-api/")) {
+    fakeApi.requests.push({ url: request.url, method: request.method, headers: request.headers, postData: request.postData });
+    const body = fakeApi.nextStatus === 201
+      ? fakeCard
+      : { error: { code: "DEPENDENCY_UNAVAILABLE", message: "A required service is temporarily unavailable.", requestId: "smoke-request-0001" } };
+    return fulfill(requestId, fakeApi.nextStatus, "application/json", JSON.stringify(body));
+  }
+  return send("Fetch.continueRequest", { requestId });
+}
+
+function header(headers, name) {
+  const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === name.toLowerCase());
+  return key ? headers[key] : undefined;
 }
 
 function assert(condition, message) {
@@ -376,6 +432,74 @@ const reloaded = await evaluate(`({
 assert(reloaded.createdActive === "true", "reload returns to the Created Link default view");
 assert(!reloaded.sessionResultVisible, "session mock result does not claim persistence");
 assert(reloaded.promo, "promotional panel remains after reload");
+
+// ---- http adapter (runtime config adapter=http, same-origin fake API) ----
+await send("Fetch.enable", {
+  patterns: [{ urlPattern: "*/config/runtime-config.js*" }, { urlPattern: "*/__fake-api/*" }],
+});
+await send("Page.reload", { ignoreCache: true });
+await sleep(700);
+const prototypeWording = /prototype|simulated|deterministic/i;
+const creationText = `document.querySelector('#linkForm').textContent + ' ' + document.querySelector('#linksWorkspace').textContent`;
+const httpInitial = await evaluate(`({
+  isPrototype: window.op4nLinkService.isPrototype,
+  hasControls: Boolean(window.op4nLinkService.prototypeControls),
+  cards: document.querySelectorAll('.public-link-card').length,
+  text: ${creationText}
+})`);
+assert(httpInitial.isPrototype === false && !httpInitial.hasControls, "runtime config alone selects the http adapter");
+assert(httpInitial.cards === 0, "http mode starts with no links (session-only list, no list API)");
+assert(!prototypeWording.test(httpInitial.text), "http mode shows no prototype wording before creation");
+
+await evaluate(`(() => {
+  document.querySelector('#linkTitle').value = 'HTTP smoke';
+  const input = document.querySelector('#linkUrl');
+  input.value = 'https://example.com/http-smoke?token=SECRET#frag';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(500);
+const httpCreated = await evaluate(`(() => {
+  const card = document.querySelector('.public-link-card');
+  return {
+    cards: document.querySelectorAll('.public-link-card').length,
+    shortUrl: card?.querySelector('.link-short-url')?.textContent.trim(),
+    title: card?.querySelector('.link-title')?.textContent.trim(),
+    summary: card?.querySelector('.link-url')?.textContent.trim(),
+    clicks: card?.querySelector('.public-click-count strong')?.textContent.trim(),
+    leaks: [document.body.innerHTML].some((value) => value.includes('SECRET') || value.includes('#frag')),
+    text: ${creationText}
+  };
+})()`);
+const post = fakeApi.requests[0];
+assert(fakeApi.requests.length === 1 && post.method === "POST" && post.url === `${fakeApiBase}/api/v1/links`, "Make Link sends exactly one POST to the configured API");
+assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(header(post.headers, "Idempotency-Key") || ""), "http create sends a UUID v4 Idempotency-Key");
+assert(String(header(post.headers, "Content-Type")).startsWith("application/json"), "http create sends JSON");
+assert(JSON.stringify(JSON.parse(post.postData)) === JSON.stringify({ destinationUrl: "https://example.com/http-smoke?token=SECRET#frag", title: "HTTP smoke" }), "http create sends the trimmed destination and title");
+assert(httpCreated.cards === 1 && httpCreated.shortUrl === fakeCard.canonicalShortUrl && httpCreated.title === "HTTP smoke", "card renders the API short URL and title");
+assert(httpCreated.summary === "https://example.com" && httpCreated.clicks === "0 clicks", "card renders the API destination summary and aggregate clicks");
+assert(!httpCreated.leaks, "http mode never renders the destination query or fragment");
+assert(!prototypeWording.test(httpCreated.text), "http mode shows no prototype wording after success");
+
+fakeApi.nextStatus = 503;
+await evaluate(`(() => {
+  const input = document.querySelector('#linkUrl');
+  input.value = 'https://example.com/http-error';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(500);
+const httpError = await evaluate(`({
+  state: document.querySelector('#linkForm').dataset.state,
+  value: document.querySelector('#linkUrl').value,
+  cards: document.querySelectorAll('.public-link-card').length,
+  retry: !document.querySelector('#formRetryButton').hidden,
+  text: ${creationText}
+})`);
+assert(httpError.state === "error" && httpError.value === "https://example.com/http-error" && httpError.cards === 1, "http service error preserves input and creates no card");
+assert(httpError.retry && !prototypeWording.test(httpError.text), "http service error offers retry without prototype wording");
+await send("Fetch.disable");
+
 assert(exceptions.length === 0, "zero uncaught JavaScript exceptions");
 
 console.log("SMOKE TEST PASSED");
