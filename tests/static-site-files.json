@@ -1,6 +1,7 @@
 [
   "CNAME",
   "app.js",
+  "config/runtime-config.js",
   "data/example-links.js",
   "data/mock-api-config.js",
   "data/mock-report-config.js",
@@ -24,6 +25,8 @@
   "message-icons/message5.png",
   "message-icons/message6.png",
   "services/destination-url-validation.js",
+  "services/http-link-service.js",
+  "services/link-service.js",
   "services/mock-link-service.js",
   "services/mock-report-service.js",
   "services/prototype-storage.js",

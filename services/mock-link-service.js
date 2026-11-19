@@ -17,6 +17,34 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  // Converts a deterministic fixture to the shared card view model used by
+  // every adapter. Only the mock may open its fixture destination directly,
+  // because mock short URLs do not resolve; the UI never reads destinationUrl.
+  function toCardModel(record) {
+    let destinationSummary = "";
+    let openUrl = "";
+    try {
+      const parsed = new URL(record.destinationUrl);
+      if (["http:", "https:"].includes(parsed.protocol)) {
+        destinationSummary = parsed.origin;
+        openUrl = parsed.href;
+      }
+    } catch {
+      // Leave the summary empty; the card shows "Destination unavailable".
+    }
+    return {
+      id: record.id,
+      code: record.code,
+      title: record.title || "",
+      shortUrl: record.shortUrl,
+      openUrl,
+      destinationSummary,
+      clickCount: record.clickCount,
+      pinned: Boolean(record.pinned),
+      source: record.source,
+    };
+  }
+
   function getScenario() {
     return config.listScenarios[listScenario] ||
       config.listScenarios[config.defaultListScenario];
@@ -31,7 +59,7 @@
       throw error;
     }
     return {
-      links: clone(scenario.records),
+      links: clone(scenario.records).map(toCardModel),
       meta: {
         prototype: true,
         persisted: false,
@@ -61,16 +89,15 @@
     creationSequence += 1;
     const shortCode = `DEMO${String(creationSequence).padStart(3, "0")}`;
     const response = {
-      link: {
+      link: toCardModel({
         id: request.requestId,
         title: request.title || "",
         destinationUrl: request.destinationUrl,
         code: shortCode,
         shortUrl: `https://op4n.me/${shortCode}`,
         clickCount: scenario.clickCount,
-        publicStatus: "mock-public",
         source: "mock-created"
-      },
+      }),
       meta: {
         prototype: true,
         persisted: false,
@@ -82,7 +109,8 @@
     return clone(response);
   }
 
-  window.op4nLinkService = Object.freeze({
+  window.op4nMockLinkService = Object.freeze({
+    isPrototype: true,
     createLink,
     listCreatedLinks,
     prototypeControls: Object.freeze({

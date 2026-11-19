@@ -54,7 +54,6 @@
     activeFilter: "created",
     createdLinks: [],
     createdLinksLoaded: false,
-    requestNumber: 0,
     createPhase: "idle",
     createInFlight: false,
     lastCreateRequest: null,
@@ -125,10 +124,6 @@
     return link.shortUrl || `https://op4n.me/${link.code || link.shortCode}`;
   }
 
-  function getDestinationUrl(link) {
-    return link.destinationUrl || link.url;
-  }
-
   function getSafeHttpUrl(value) {
     try {
       const parsedUrl = new URL(String(value));
@@ -138,12 +133,14 @@
     }
   }
 
-  function getPublicDestinationSummary(value) {
-    const destinationUrl = getSafeHttpUrl(value);
-    if (!destinationUrl) return "";
+  // Prototype-only wording is shown only while the deterministic mock adapter
+  // is active; the http adapter never shows it.
+  function isPrototypeService() {
+    return Boolean(window.op4nLinkService?.isPrototype);
+  }
 
-    const parsedUrl = new URL(destinationUrl);
-    return parsedUrl.origin;
+  function newRequestId() {
+    return window.crypto.randomUUID();
   }
 
   function setUrlError(message = "") {
@@ -175,7 +172,9 @@
       MOCK_MALFORMED_RESPONSE: ["The prototype returned an unusable response. Check the URL or try again later.", false],
     };
     const [message, canRetry] = messages[error?.code] || [
-      "The prototype could not create this link. Your form values are unchanged.",
+      isPrototypeService()
+        ? "The prototype could not create this link. Your form values are unchanged."
+        : "We couldn't create this link right now. Your details are still here.",
       true,
     ];
     return { message, canRetry };
@@ -237,7 +236,9 @@
       const loading = document.createElement("div");
       loading.className = "guest-empty-state";
       loading.dataset.state = "loading";
-      loading.textContent = "Loading deterministic prototype links…";
+      loading.textContent = isPrototypeService()
+        ? "Loading deterministic prototype links…"
+        : "Loading links…";
       elements.linksList.append(loading);
       try {
         const response = await window.op4nLinkService.listCreatedLinks();
@@ -251,8 +252,9 @@
         const error = document.createElement("div");
         error.className = "guest-empty-state guest-error-state";
         error.dataset.state = "error";
-        error.textContent =
-          "Prototype Created Links could not be loaded. Switch views and try again.";
+        error.textContent = isPrototypeService()
+          ? "Prototype Created Links could not be loaded. Switch views and try again."
+          : "Links could not be loaded. Reload the page and try again.";
         elements.linksList.append(error);
         return;
       }
@@ -261,7 +263,9 @@
     if (!records.length) {
       const empty = document.createElement("div");
       empty.className = "guest-empty-state";
-      empty.textContent = "No Created Links in this prototype session yet.";
+      empty.textContent = isPrototypeService()
+        ? "No Created Links in this prototype session yet."
+        : "Links you create in this tab will appear here.";
       elements.linksList.append(empty);
       return;
     }
@@ -278,8 +282,11 @@
     card.dataset.capability = CAPABILITY.GUEST_ACTION;
 
     const shortLink = getShortLink(link);
-    const destinationUrl = getSafeHttpUrl(getDestinationUrl(link));
-    const destinationSummary = getPublicDestinationSummary(destinationUrl);
+    // The card never holds the full destination: openUrl is the canonical
+    // short URL from the API (the mock opens its fixture directly) and the
+    // summary is the server-approved display value.
+    const openUrl = getSafeHttpUrl(link.openUrl);
+    const destinationSummary = openUrl ? String(link.destinationSummary || "") : "";
     const safeTitle = escapeHTML(link.title || "Untitled link");
     const safeDestinationSummary = escapeHTML(destinationSummary);
     const safeShortLink = escapeHTML(shortLink);
@@ -302,7 +309,7 @@
           </div>
           <div class="link-url-row link-destination-field">
             <span class="link-field-label">Destination URL :</span>
-            ${destinationUrl ? `<button class="link-url open-destination-btn" type="button" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
+            ${openUrl ? `<button class="link-url open-destination-btn" type="button" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
               ${safeDestinationSummary}
             </button>` : '<span class="link-url">Destination unavailable</span>'}
           </div>
@@ -319,7 +326,7 @@
             <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
             <span class="sr-only action-label">Copy short link</span>
           </button>` : ""}
-          ${capabilities.guestActions.includes("open") && destinationUrl ? `<button class="guest-action-button open-destination-btn" type="button"
+          ${capabilities.guestActions.includes("open") && openUrl ? `<button class="guest-action-button open-destination-btn" type="button"
              data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Open destination" aria-label="Open destination ${safeDestinationSummary} in a new tab">
             <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
             <span class="sr-only">Open destination</span>
@@ -351,7 +358,7 @@
 
     card.querySelectorAll(".open-destination-btn").forEach((button) => {
       button.addEventListener("click", () => {
-        const openedWindow = window.open(destinationUrl, "_blank", "noopener,noreferrer");
+        const openedWindow = window.open(openUrl, "_blank", "noopener,noreferrer");
         if (openedWindow) openedWindow.opener = null;
       });
     });
@@ -496,11 +503,14 @@
   async function submitCreateRequest(request) {
     if (state.createInFlight) return;
     state.createInFlight = true;
-    setCreatePhase("creating", "Creating a deterministic prototype link…");
+    setCreatePhase(
+      "creating",
+      isPrototypeService() ? "Creating a deterministic prototype link…" : "Creating your short link…"
+    );
 
     try {
       const response = await window.op4nLinkService.createLink(request);
-      if (!response?.link?.id || !response.link.shortUrl || !getDestinationUrl(response.link)) {
+      if (!response?.link?.id || !response.link.shortUrl) {
         const malformedError = new Error("Malformed prototype response");
         malformedError.code = "MOCK_MALFORMED_RESPONSE";
         throw malformedError;
@@ -512,7 +522,9 @@
       state.lastCreateRequest = null;
       setCreatePhase(
         "success",
-        "Your short link is ready. This is prototype data only; it is not saved to a production service."
+        isPrototypeService()
+          ? "Your short link is ready. This is prototype data only; it is not saved to a production service."
+          : "Your short link is ready."
       );
       setFilter("created");
     } catch (error) {
@@ -541,9 +553,8 @@
     setUrlError();
     elements.linkUrl.value = validation.url;
 
-    state.requestNumber += 1;
     state.lastCreateRequest = {
-      requestId: `prototype-create-${state.requestNumber}`,
+      requestId: newRequestId(),
       title: elements.linkTitle.value.trim(),
       destinationUrl: validation.url,
     };

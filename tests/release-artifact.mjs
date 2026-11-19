@@ -19,7 +19,7 @@ const permittedRootFiles = new Set([
   "CNAME", "app.js", "discover.html", "index.html", "shared-sidebar.js", "styles.css",
 ]);
 const permittedDirectories = [
-  "data/", "discover-icon/", "favicon/", "message-icons/", "services/", "showcase/",
+  "config/", "data/", "discover-icon/", "favicon/", "message-icons/", "services/", "showcase/",
 ];
 
 function git(root, args, { encoding = "utf8" } = {}) {

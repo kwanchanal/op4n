@@ -42,6 +42,13 @@ export function checkForeignPreflight(status, headers) {
   return failures;
 }
 
+export function checkRuntimeConfig(text, ref) {
+  return /adapter:\s*"http"/.test(text) &&
+    text.includes(`https://${ref}.supabase.co/functions/v1/op4n-api`) &&
+    /shortLinkHost:\s*"staging\.op4n\.me"/.test(text) &&
+    /environment:\s*"staging"/.test(text);
+}
+
 function selfTest() {
   const good = new Headers({ "access-control-allow-origin": STAGING_ORIGIN, "cache-control": "no-store" });
   const card = {
@@ -61,6 +68,9 @@ function selfTest() {
     [checkCreateResponse(201, good, { ...card, canonicalShortUrl: "https://op4n.me/ABCDEFGH" }).length === 0, false],
     [checkForeignPreflight(403, new Headers()).length === 0, true],
     [checkForeignPreflight(204, new Headers({ "access-control-allow-origin": PRODUCTION_ORIGIN })).length === 0, false],
+    [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://abcdefghijklmnopqrst.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), true],
+    [checkRuntimeConfig('environment: "local", adapter: "mock", apiBaseUrl: "", shortLinkHost: "op4n.me"', "abcdefghijklmnopqrst"), false],
+    [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://zzzzzzzzzzzzzzzzzzzz.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), false],
   ];
   cases.forEach(([actual, expected], index) => {
     if (actual !== expected) throw new Error(`staging smoke self-test ${index + 1} failed`);
@@ -100,6 +110,18 @@ async function run() {
     },
   });
   failures.push(...checkForeignPreflight(foreign.status, foreign.headers));
+
+  // The deployed frontend must select the http adapter and point at this
+  // project's API. Pages can take a few seconds to serve a new deployment.
+  let configOk = false;
+  for (let attempt = 0; attempt < 10 && !configOk; attempt += 1) {
+    const response = await fetch(`${STAGING_ORIGIN}/config/runtime-config.js`, { cache: "no-store" })
+      .catch(() => null);
+    const text = response?.ok ? await response.text() : "";
+    configOk = checkRuntimeConfig(text, ref);
+    if (!configOk) await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  if (!configOk) failures.push("Staging frontend runtime config does not select the http adapter for this project");
 
   if (failures.length) {
     failures.forEach((message) => console.error(`FAIL ${message}`));
