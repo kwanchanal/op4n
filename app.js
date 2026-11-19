@@ -74,6 +74,7 @@
     bannerText: document.getElementById("bannerText"),
     linkForm: document.getElementById("linkForm"),
     linkTitle: document.getElementById("linkTitle"),
+    linkTitleError: document.getElementById("linkTitleError"),
     linkUrl: document.getElementById("linkUrl"),
     linkUrlError: document.getElementById("linkUrlError"),
     createSubmit: document.querySelector("[data-create-submit]"),
@@ -124,6 +125,13 @@
     return link.shortUrl || `https://op4n.me/${link.code || link.shortCode}`;
   }
 
+  // Visible short URL without the scheme (op4n.me/CODE). Copy and Open always
+  // use the full canonical URL.
+  function splitShortUrl(url) {
+    const match = String(url).match(/^(https?:\/\/)(.*)$/);
+    return match ? { scheme: match[1], display: match[2] } : { scheme: "", display: String(url) };
+  }
+
   function getSafeHttpUrl(value) {
     try {
       const parsedUrl = new URL(String(value));
@@ -148,36 +156,69 @@
     elements.linkUrl.setAttribute("aria-invalid", String(Boolean(message)));
   }
 
-  const { validateDestinationUrlInput: validateDestination } =
-    window.op4nDestinationUrlValidation;
+  function setTitleError(message = "") {
+    elements.linkTitleError.textContent = message;
+    elements.linkTitle.setAttribute("aria-invalid", String(Boolean(message)));
+  }
+
+  const {
+    validateDestinationUrlInput: validateDestination,
+    validateTitleInput: validateTitle,
+  } = window.op4nDestinationUrlValidation;
+
+  const CREATE_TIMEOUT_MS = 15000;
+  const COPY_CONFIRMATION_MS = 1600;
 
   function setCreatePhase(phase, message = "", options = {}) {
+    const creating = phase === "creating";
     state.createPhase = phase;
     elements.linkForm.dataset.state = phase;
-    elements.linkForm.setAttribute("aria-busy", String(phase === "creating"));
-    elements.createSubmit.disabled = phase === "creating";
-    elements.createSubmit.textContent = phase === "creating" ? "Creating link…" : "Make Link";
+    elements.linkForm.setAttribute("aria-busy", String(creating));
+    elements.createSubmit.disabled = creating;
+    elements.createSubmit.textContent = creating ? "Creating link…" : "Make Link";
+    // Inputs stay readable but cannot drift while a request is unresolved.
+    elements.linkUrl.readOnly = creating;
+    elements.linkTitle.readOnly = creating;
     elements.formStatus.textContent = message;
     elements.formStatus.dataset.status = phase;
     elements.formRetryButton.hidden = !options.canRetry;
   }
 
+  const RETRYABLE_ERROR = "Something went wrong while creating your link. Your details are still here.";
+  const FINAL_ERROR = "We couldn't create this link. Check the details, then try again later.";
+
+  // Maps R1 API error codes (the mock emits the same codes) to user-facing
+  // copy. Raw server messages are never shown.
   function getCreateErrorPresentation(error) {
-    const messages = {
-      MOCK_OFFLINE: ["You appear to be offline. Reconnect, then retry this prototype request.", true],
-      MOCK_TIMEOUT: ["The prototype request timed out. You can retry safely.", true],
-      MOCK_RATE_LIMIT: ["Too many prototype requests. Wait a moment, then retry.", true],
-      MOCK_BLOCKED_DESTINATION: ["This destination cannot be used in the prototype. Check or replace the URL.", false],
-      MOCK_SERVER_ERROR: ["The prototype service is temporarily unavailable. You can retry safely.", true],
-      MOCK_MALFORMED_RESPONSE: ["The prototype returned an unusable response. Check the URL or try again later.", false],
-    };
-    const [message, canRetry] = messages[error?.code] || [
-      isPrototypeService()
-        ? "The prototype could not create this link. Your form values are unchanged."
-        : "We couldn't create this link right now. Your details are still here.",
-      true,
-    ];
-    return { message, canRetry };
+    switch (error?.code) {
+      case "DEPENDENCY_UNAVAILABLE":
+        return { message: "Link creation is temporarily unavailable. Try again in a moment.", canRetry: true };
+      case "INTERNAL_ERROR":
+      case "NETWORK_ERROR":
+      case "CLIENT_TIMEOUT":
+      case "RATE_LIMITED":
+        return { message: RETRYABLE_ERROR, canRetry: true };
+      case "IDEMPOTENCY_CONFLICT":
+        return { message: RETRYABLE_ERROR, canRetry: true, rotateKey: true };
+      case "DESTINATION_BLOCKED":
+        return { message: "This destination can't be shortened.", canRetry: false };
+      default:
+        return { message: FINAL_ERROR, canRetry: false };
+    }
+  }
+
+  // Server-side destination rejections are shown inline under the URL field.
+  function getInlineDestinationError(error) {
+    if (error?.code === "UNSUPPORTED_PROTOCOL") return "Only HTTP and HTTPS destination URLs are supported.";
+    if (error?.code === "VALIDATION_ERROR" && error.fields?.includes("destinationUrl")) {
+      return "Check this URL and try again.";
+    }
+    return "";
+  }
+
+  function withSupportReference(message, error) {
+    const requestId = typeof error?.requestId === "string" ? error.requestId : "";
+    return requestId ? `${message} (Ref ${requestId.slice(0, 8)})` : message;
   }
 
   function formatClicks(value) {
@@ -203,12 +244,42 @@
     document.body.append(fallback);
     fallback.select();
     fallback.setSelectionRange(0, value.length);
-    const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+    let copied = false;
+    try {
+      copied = typeof document.execCommand === "function" && document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
     fallback.remove();
-    if (copied) return true;
+    return copied;
+  }
 
-    window.prompt("Copy this short link manually (Command/Ctrl+C):", value);
-    return false;
+  // Final copy fallback: a visible, pre-selected field inside the card.
+  function showCopyFallback(card, value) {
+    let field = card.querySelector(".copy-fallback-field");
+    if (!field) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "copy-fallback";
+      const label = document.createElement("label");
+      label.textContent = "Press Ctrl/Cmd+C to copy";
+      field = document.createElement("input");
+      field.type = "text";
+      field.readOnly = true;
+      field.className = "copy-fallback-field";
+      field.value = value;
+      label.htmlFor = field.id = `copy-fallback-${card.dataset.linkId}`.replace(/[^A-Za-z0-9_-]/g, "-");
+      wrapper.append(label, field);
+      card.querySelector(".link-card-toolbar").after(wrapper);
+    }
+    field.focus();
+    field.select();
+  }
+
+  function announce(statusElement, message) {
+    statusElement.textContent = "";
+    window.requestAnimationFrame(() => {
+      statusElement.textContent = message;
+    });
   }
 
   function setFilter(filter) {
@@ -282,6 +353,9 @@
     card.dataset.capability = CAPABILITY.GUEST_ACTION;
 
     const shortLink = getShortLink(link);
+    const { scheme: shortScheme, display: shortDisplay } = splitShortUrl(shortLink);
+    const safeShortScheme = escapeHTML(shortScheme);
+    const safeShortDisplay = escapeHTML(shortDisplay);
     // The card never holds the full destination: openUrl is the canonical
     // short URL from the API (the mock opens its fixture directly) and the
     // summary is the server-approved display value.
@@ -305,7 +379,7 @@
             <span class="link-title" title="${safeTitle}">${safeTitle}</span>
           </div>
           <div class="link-short-row">
-            <span class="link-short-url">${safeShortLink}</span>
+            <span class="link-short-url"><span class="sr-only">${safeShortScheme}</span>${safeShortDisplay}</span>
           </div>
           <div class="link-url-row link-destination-field">
             <span class="link-field-label">Destination URL :</span>
@@ -322,8 +396,8 @@
             <span class="material-symbols-outlined" aria-hidden="true">bar_chart</span>
             <strong>${formatClicks(link.clickCount)}</strong>
           </button>` : ""}
-          ${capabilities.guestActions.includes("copy") ? `<button class="guest-action-button copy-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Copy link" aria-label="Copy short link ${safeShortLink}">
-            <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+          ${capabilities.guestActions.includes("copy") ? `<button class="guest-action-button copy-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Copy link" aria-label="Copy short link ${safeShortDisplay}">
+            <span class="material-symbols-outlined copy-icon" aria-hidden="true">content_copy</span>
             <span class="sr-only action-label">Copy short link</span>
           </button>` : ""}
           ${capabilities.guestActions.includes("open") && openUrl ? `<button class="guest-action-button open-destination-btn" type="button"
@@ -363,21 +437,30 @@
       });
     });
 
+    let copyResetTimer = 0;
     card.querySelector(".copy-link-btn")?.addEventListener("click", async (event) => {
       const button = event.currentTarget;
       const status = card.querySelector(".card-live-status");
       const copied = await copyText(shortLink);
-      if (copied) {
-        button.querySelector(".action-label").textContent = "Copied";
-        button.setAttribute("aria-label", `Copied ${shortLink}`);
-        status.textContent = `Copied ${shortLink}`;
-        window.setTimeout(() => {
-          button.querySelector(".action-label").textContent = "Copy short link";
-          button.setAttribute("aria-label", `Copy short link ${shortLink}`);
-        }, 1600);
-      } else {
-        status.textContent = "Copy the selected short link, then close the copy dialog.";
+      if (!copied) {
+        showCopyFallback(card, shortLink);
+        announce(status, "Copy isn't available here. The short link is selected; press Ctrl or Cmd+C.");
+        return;
       }
+      button.querySelector(".action-label").textContent = "Copied";
+      button.querySelector(".copy-icon").textContent = "check";
+      button.dataset.tooltip = "Copied";
+      button.classList.add("is-copied");
+      button.setAttribute("aria-label", `Copied ${shortDisplay}`);
+      announce(status, `Copied ${shortDisplay}`);
+      window.clearTimeout(copyResetTimer);
+      copyResetTimer = window.setTimeout(() => {
+        button.querySelector(".action-label").textContent = "Copy short link";
+        button.querySelector(".copy-icon").textContent = "content_copy";
+        button.dataset.tooltip = "Copy link";
+        button.classList.remove("is-copied");
+        button.setAttribute("aria-label", `Copy short link ${shortDisplay}`);
+      }, COPY_CONFIRMATION_MS);
     });
 
     card.querySelector(".click-count-btn")?.addEventListener("click", () => {
@@ -500,6 +583,38 @@
     }
   }
 
+  async function createWithTimeout(request) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), CREATE_TIMEOUT_MS);
+    try {
+      return await window.op4nLinkService.createLink(request, { signal: controller.signal });
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  // An identical request still being processed is retried once with the same
+  // Idempotency-Key after Retry-After (bounded to 1–5 s).
+  async function createWithInProgressRetry(request) {
+    try {
+      return await createWithTimeout(request);
+    } catch (error) {
+      if (error?.code !== "IDEMPOTENCY_IN_PROGRESS") throw error;
+      const waitSeconds = Math.min(Math.max(Number(error.retryAfter) || 1, 1), 5);
+      await new Promise((resolve) => window.setTimeout(resolve, waitSeconds * 1000));
+      return createWithTimeout(request);
+    }
+  }
+
+  function focusCreatedCard(linkId) {
+    const card = [...elements.linksList.querySelectorAll(".public-link-card")]
+      .find((item) => item.dataset.linkId === String(linkId));
+    if (!card) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+    card.querySelector(".copy-link-btn")?.focus({ preventScroll: true });
+  }
+
   async function submitCreateRequest(request) {
     if (state.createInFlight) return;
     state.createInFlight = true;
@@ -507,35 +622,58 @@
       "creating",
       isPrototypeService() ? "Creating a deterministic prototype link…" : "Creating your short link…"
     );
+    let createdLinkId = null;
 
     try {
-      const response = await window.op4nLinkService.createLink(request);
+      const response = await createWithInProgressRetry(request);
       if (!response?.link?.id || !response.link.shortUrl) {
-        const malformedError = new Error("Malformed prototype response");
-        malformedError.code = "MOCK_MALFORMED_RESPONSE";
+        const malformedError = new Error("Malformed link response");
+        malformedError.code = "MALFORMED_RESPONSE";
         throw malformedError;
       }
+      // A replayed response for the same key never adds a second card.
       if (!state.createdLinks.some((link) => link.id === response.link.id)) {
         state.createdLinks.unshift(response.link);
       }
       state.createdLinksLoaded = true;
       state.lastCreateRequest = null;
+      createdLinkId = response.link.id;
       setCreatePhase(
         "success",
         isPrototypeService()
-          ? "Your short link is ready. This is prototype data only; it is not saved to a production service."
-          : "Your short link is ready."
+          ? "Short link created. This is prototype data only; it is not saved to a production service."
+          : "Short link created."
       );
+      elements.linkUrl.value = "";
+      elements.linkTitle.value = "";
+      setUrlError();
+      setTitleError();
       setFilter("created");
     } catch (error) {
+      const inlineMessage = getInlineDestinationError(error);
+      if (inlineMessage) {
+        setCreatePhase("error");
+        setUrlError(inlineMessage);
+        elements.linkUrl.focus();
+        return;
+      }
       const presentation = getCreateErrorPresentation(error);
-      setCreatePhase("error", presentation.message, { canRetry: presentation.canRetry });
+      if (presentation.rotateKey && state.lastCreateRequest) {
+        state.lastCreateRequest = { ...state.lastCreateRequest, requestId: newRequestId() };
+      }
+      setCreatePhase("error", withSupportReference(presentation.message, error), {
+        canRetry: presentation.canRetry,
+      });
     } finally {
       state.createInFlight = false;
+      if (state.createPhase === "creating") setCreatePhase("idle");
       elements.linkForm.setAttribute("aria-busy", "false");
       elements.createSubmit.disabled = false;
       elements.createSubmit.textContent = "Make Link";
+      elements.linkUrl.readOnly = false;
+      elements.linkTitle.readOnly = false;
     }
+    if (createdLinkId !== null) focusCreatedCard(createdLinkId);
   }
 
   async function handleCreate(event) {
@@ -544,18 +682,25 @@
 
     setCreatePhase("validating");
     const validation = validateDestination(elements.linkUrl.value);
-    if (!validation.valid) {
-      setUrlError(validation.message);
+    const titleValidation = validateTitle(elements.linkTitle.value);
+    setUrlError(validation.valid ? "" : validation.message);
+    setTitleError(titleValidation.valid ? "" : titleValidation.message);
+    if (!validation.valid || !titleValidation.valid) {
       setCreatePhase("idle");
-      elements.linkUrl.focus();
+      (validation.valid ? elements.linkTitle : elements.linkUrl).focus();
       return;
     }
-    setUrlError();
     elements.linkUrl.value = validation.url;
 
+    // One intent, one Idempotency-Key: resubmitting or retrying the same
+    // payload after a failure reuses the key; any edit starts a new intent.
+    const previous = state.lastCreateRequest;
+    const sameIntent = previous &&
+      previous.destinationUrl === validation.url &&
+      previous.title === titleValidation.title;
     state.lastCreateRequest = {
-      requestId: newRequestId(),
-      title: elements.linkTitle.value.trim(),
+      requestId: sameIntent ? previous.requestId : newRequestId(),
+      title: titleValidation.title,
       destinationUrl: validation.url,
     };
     await submitCreateRequest(state.lastCreateRequest);
@@ -765,6 +910,13 @@
       if (elements.linkUrl.getAttribute("aria-invalid") === "true") {
         const validation = validateDestination(elements.linkUrl.value);
         setUrlError(validation.valid ? "" : validation.message);
+      }
+      if (state.createPhase === "error") setCreatePhase("idle");
+    });
+    elements.linkTitle.addEventListener("input", () => {
+      if (elements.linkTitle.getAttribute("aria-invalid") === "true") {
+        const validation = validateTitle(elements.linkTitle.value);
+        setTitleError(validation.valid ? "" : validation.message);
       }
       if (state.createPhase === "error") setCreatePhase("idle");
     });

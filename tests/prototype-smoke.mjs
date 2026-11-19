@@ -65,7 +65,7 @@ const httpRuntimeConfig = {
 const fakeApi = { requests: [], nextStatus: 201 };
 const fakeCard = {
   aggregateTotalClicks: 0,
-  canonicalCode: "HTTP0001",
+  canonicalCode: "HTTPCODE",
   canonicalOpenUrl: "https://staging.op4n.me/HTTP0001",
   canonicalShortUrl: "https://staging.op4n.me/HTTP0001",
   displayTitle: "HTTP smoke",
@@ -207,7 +207,19 @@ await evaluate(`document.querySelector('#linkForm').requestSubmit()`);
 await sleep(450);
 let createdCount = await evaluate(`document.querySelectorAll('.public-link-card').length`);
 assert(createdCount === 5, "keyboard submission works and duplicate submission creates exactly one result");
-assert((await evaluate(`document.querySelector('#linkUrl').value`)) === "https://example.com/smoke?x=1#private", "valid URL whitespace is trimmed before the mock request");
+assert((await evaluate(`window.op4nLinkService.prototypeControls.getLastCreateRequest().destinationUrl`)) === "https://example.com/smoke?x=1#private", "valid URL whitespace is trimmed before the mock request");
+const afterSuccess = await evaluate(`({
+  url: document.querySelector('#linkUrl').value,
+  title: document.querySelector('#linkTitle').value,
+  state: document.querySelector('#linkForm').dataset.state,
+  busy: document.querySelector('#linkForm').getAttribute('aria-busy'),
+  focusedCopy: document.activeElement?.classList.contains('copy-link-btn') &&
+    document.activeElement.closest('.public-link-card')?.querySelector('.link-title')?.textContent.trim() === 'Untitled link',
+  status: document.querySelector('#formStatus').textContent
+})`);
+assert(afterSuccess.url === "" && afterSuccess.title === "" && afterSuccess.state === "success" && afterSuccess.busy === "false", "success clears the form and leaves no busy state");
+assert(afterSuccess.focusedCopy, "success moves focus to the new card's Copy button");
+assert(afterSuccess.status.startsWith("Short link created"), "success is announced once in the status region");
 assert((await evaluate(`[
   ...document.querySelectorAll('.public-link-card .link-title')
 ].some((item) => item.textContent.trim() === 'Untitled link')`)), "empty optional Title is accepted with a presentation fallback");
@@ -235,7 +247,64 @@ const safeTitle = await evaluate(`(() => {
 })()`);
 assert(safeTitle.found && !safeTitle.injectedImage && !safeTitle.executed, "optional Title is rendered as inert text");
 
-for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination", "server-error", "malformed-response"]) {
+// Loading state: inputs are read-only and the CTA is disabled while unresolved.
+await evaluate(`(() => {
+  window.op4nLinkService.prototypeControls.setCreateScenario('timeout');
+  const input = document.querySelector('#linkUrl');
+  input.value = 'https://example.com/loading';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(120);
+const loading = await evaluate(`({
+  busy: document.querySelector('#linkForm').getAttribute('aria-busy'),
+  disabled: document.querySelector('[data-create-submit]').disabled,
+  label: document.querySelector('[data-create-submit]').textContent.trim(),
+  readOnly: document.querySelector('#linkUrl').readOnly && document.querySelector('#linkTitle').readOnly,
+  value: document.querySelector('#linkUrl').value
+})`);
+assert(loading.busy === "true" && loading.disabled && loading.label === "Creating link…", "loading state disables Make Link and sets aria-busy");
+assert(loading.readOnly && loading.value === "https://example.com/loading", "inputs are read-only and keep their values while creating");
+await sleep(450);
+const loaded = await evaluate(`({
+  busy: document.querySelector('#linkForm').getAttribute('aria-busy'),
+  disabled: document.querySelector('[data-create-submit]').disabled,
+  readOnly: document.querySelector('#linkUrl').readOnly || document.querySelector('#linkTitle').readOnly
+})`);
+assert(loaded.busy === "false" && !loaded.disabled && !loaded.readOnly, "loading state ends cleanly after an error");
+
+// Title limit: more than 200 characters never reaches the service.
+await evaluate(`(() => {
+  window.op4nLinkService.prototypeControls.setCreateScenario('success');
+  window.__requestsBeforeTitle = window.op4nLinkService.prototypeControls.getLastCreateRequest()?.requestId;
+  document.querySelector('#linkTitle').value = 'a'.repeat(201);
+  document.querySelector('#linkUrl').value = 'https://example.com/long-title';
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(80);
+const titleLimit = await evaluate(`({
+  error: document.querySelector('#linkTitleError').textContent,
+  invalid: document.querySelector('#linkTitle').getAttribute('aria-invalid'),
+  focused: document.activeElement === document.querySelector('#linkTitle'),
+  maxLength: document.querySelector('#linkTitle').maxLength,
+  unchanged: window.op4nLinkService.prototypeControls.getLastCreateRequest()?.requestId === window.__requestsBeforeTitle
+})`);
+assert(titleLimit.error.includes("200") && titleLimit.invalid === "true" && titleLimit.focused && titleLimit.unchanged, "Title over 200 characters is rejected inline without a request");
+assert(titleLimit.maxLength === 200, "Title input enforces maxlength 200");
+await evaluate(`document.querySelector('#linkTitle').value = ''; document.querySelector('#linkTitle').dispatchEvent(new Event('input', { bubbles: true }))`);
+
+// Client policy parity: short-link hosts and credentials are rejected before any request.
+for (const [value, part] of [["https://op4n.me/ABCDEFG", "shortened again"], ["https://user:pass@example.com/", "username or password"]]) {
+  await evaluate(`document.querySelector('#linkUrl').value = ${JSON.stringify(value)}; document.querySelector('#linkForm').requestSubmit()`);
+  await sleep(50);
+  assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes(part), `client rejects ${part} inline`);
+}
+
+const expectedRetry = {
+  offline: true, timeout: true, "rate-limit": true, "blocked-destination": false,
+  "server-error": true, unavailable: true, conflict: true, "malformed-response": false,
+};
+for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination", "server-error", "unavailable", "conflict", "malformed-response"]) {
   await evaluate(`(() => {
     window.op4nLinkService.prototypeControls.setCreateScenario(${JSON.stringify(scenario)});
     const input = document.querySelector('#linkUrl');
@@ -247,9 +316,13 @@ for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination
   const errorState = await evaluate(`({
     state: document.querySelector('#linkForm').dataset.state,
     value: document.querySelector('#linkUrl').value,
-    count: document.querySelectorAll('.public-link-card').length
+    count: document.querySelectorAll('.public-link-card').length,
+    retry: !document.querySelector('#formRetryButton').hidden,
+    status: document.querySelector('#formStatus').textContent
   })`);
   assert(errorState.state === "error", `${scenario} enters the error state`);
+  assert(errorState.retry === expectedRetry[scenario], `${scenario} ${expectedRetry[scenario] ? "offers" : "does not offer"} Retry`);
+  assert(errorState.status.includes("(Ref mock-req)") && !/prototype|MOCK_|stack/i.test(errorState.status), `${scenario} shows a support reference and no raw detail`);
   assert(errorState.value.includes(scenario), `${scenario} preserves input`);
   assert(errorState.count === createdCount, `${scenario} does not create a card`);
 }
@@ -262,9 +335,25 @@ await evaluate(`(() => {
   document.querySelector('#linkForm').requestSubmit();
 })()`);
 await sleep(350);
-await evaluate(`window.op4nLinkService.prototypeControls.setCreateScenario('success'); document.querySelector('#formRetryButton').click()`);
+await evaluate(`window.__retryKeyBefore = window.op4nLinkService.prototypeControls.getLastCreateRequest().requestId; window.op4nLinkService.prototypeControls.setCreateScenario('success'); document.querySelector('#formRetryButton').click()`);
 await sleep(350);
 createdCount += 1;
+assert(await evaluate(`window.op4nLinkService.prototypeControls.getLastCreateRequest().requestId === window.__retryKeyBefore`), "Retry reuses the same Idempotency-Key");
+
+// Conflict rotates the key; resubmitting the same payload otherwise reuses it.
+await evaluate(`(() => {
+  window.op4nLinkService.prototypeControls.setCreateScenario('conflict');
+  const input = document.querySelector('#linkUrl');
+  input.value = 'https://example.com/conflict-retry';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#linkForm').requestSubmit();
+})()`);
+await sleep(350);
+await evaluate(`window.__conflictKey = window.op4nLinkService.prototypeControls.getLastCreateRequest().requestId; window.op4nLinkService.prototypeControls.setCreateScenario('success'); document.querySelector('#formRetryButton').click()`);
+await sleep(350);
+createdCount += 1;
+assert(await evaluate(`window.op4nLinkService.prototypeControls.getLastCreateRequest().requestId !== window.__conflictKey`), "IDEMPOTENCY_CONFLICT retries with a new key");
+assert((await evaluate(`document.querySelectorAll('.public-link-card').length`)) === createdCount, "conflict retry creates exactly one card");
 assert((await evaluate(`document.querySelectorAll('.public-link-card').length`)) === createdCount, "safe retry creates one result with the same request");
 assert((await evaluate(`document.querySelector('.public-link-card')?.dataset.linkId`)) === "mock-created-portfolio", "pinned Portfolio stays first after new links are created");
 
@@ -294,6 +383,16 @@ const cardContract = await evaluate(`(() => {
   };
 })()`);
 assert(cardContract.shortUrl.startsWith("https://op4n.me/"), "card uses canonical short URL");
+const shortDisplay = await evaluate(`(() => {
+  const element = document.querySelector('.public-link-card .link-short-url');
+  const style = getComputedStyle(element);
+  const visible = [...element.childNodes]
+    .filter((node) => !node.classList?.contains('sr-only'))
+    .map((node) => node.textContent).join('').trim();
+  return { visible, overflow: style.textOverflow, wrap: style.overflowWrap };
+})()`);
+assert(shortDisplay.visible.startsWith("op4n.me/") && !shortDisplay.visible.includes("https://"), "short URL is shown as op4n.me/CODE while the full URL stays in text");
+assert(shortDisplay.overflow !== "ellipsis" && shortDisplay.wrap === "anywhere", "short URL wraps instead of truncating");
 assert(cardContract.destinationLabel === "Destination URL :", "card labels the destination separately");
 assert(cardContract.destinationControl === "BUTTON" && cardContract.longDestinationSummary === "https://example.com", "destination summary is limited to the normalized origin");
 assert(!cardContract.fullQueryExposed, "public card DOM does not expose destination query parameters");
@@ -307,6 +406,30 @@ await evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: tr
 await sleep(50);
 assert((await evaluate(`window.__copiedSmoke`)) === cardContract.shortUrl, "Copy writes the full short URL");
 assert((await evaluate(`document.querySelector('.copy-link-btn span:last-child').textContent`)) === "Copied", "Copy announces confirmation");
+assert((await evaluate(`document.querySelector('.copy-link-btn .copy-icon').textContent`)) === "check", "Copy confirmation changes the icon, not only color");
+await evaluate(`(() => { const button = document.querySelector('.copy-link-btn'); button.click(); button.click(); button.click(); })()`);
+await sleep(1800);
+assert((await evaluate(`document.querySelector('.copy-link-btn span:last-child').textContent`)) === "Copy short link", "rapid copies reset to the default label after one timer");
+assert((await evaluate(`document.querySelector('.copy-link-btn').getAttribute('aria-label')`)).startsWith("Copy short link op4n.me/"), "Copy has the accessible name Copy short link op4n.me/CODE");
+const copyFallback = await evaluate(`(async () => {
+  window.__promptCalled = false;
+  window.prompt = () => { window.__promptCalled = true; };
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } });
+  document.execCommand = () => false;
+  const card = document.querySelector('.public-link-card');
+  card.querySelector('.copy-link-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const field = card.querySelector('.copy-fallback-field');
+  return {
+    field: Boolean(field),
+    value: field?.value,
+    selected: document.activeElement === field,
+    prompt: window.__promptCalled,
+    label: card.querySelector('.copy-link-btn span:last-child').textContent
+  };
+})()`);
+assert(copyFallback.field && copyFallback.value === cardContract.shortUrl && copyFallback.selected, "denied clipboard shows a selected inline fallback field");
+assert(!copyFallback.prompt && copyFallback.label !== "Copied", "copy fallback never calls window.prompt or claims Copied");
 
 await evaluate(`document.querySelector('.click-count-btn').click()`);
 assert((await evaluate(`document.querySelector('.card-live-status').textContent`)).includes("public link has"), "Clicks action announces aggregate clicks");
@@ -498,6 +621,7 @@ const httpError = await evaluate(`({
 })`);
 assert(httpError.state === "error" && httpError.value === "https://example.com/http-error" && httpError.cards === 1, "http service error preserves input and creates no card");
 assert(httpError.retry && !prototypeWording.test(httpError.text), "http service error offers retry without prototype wording");
+assert(httpError.text.includes("temporarily unavailable") && httpError.text.includes("(Ref smoke-re)"), "http 503 shows the approved message and X-Request-ID reference");
 await send("Fetch.disable");
 
 assert(exceptions.length === 0, "zero uncaught JavaScript exceptions");

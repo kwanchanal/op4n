@@ -2196,3 +2196,29 @@ flex-direction: column-reverse;
     align-self: auto;
   }
 }
+
+/* R1 Batch A: full short URL wraps instead of truncating; copy fallback. */
+.public-link-card .link-short-url {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.copy-link-btn.is-copied .copy-icon {
+  font-weight: 700;
+}
+.copy-fallback {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.copy-fallback-field {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+}

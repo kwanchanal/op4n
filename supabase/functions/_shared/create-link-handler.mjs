@@ -6,6 +6,14 @@ const UUID_V4 =
 const RESERVATION_TOKEN = /^[0-9a-f]{64}$/;
 const MAX_BODY_BYTES = 8192;
 const ALLOWED_FIELDS = new Set(["destinationUrl", "title"]);
+const EXPOSED_HEADERS = [
+  "X-Request-ID",
+  "Retry-After",
+  "RateLimit-Limit",
+  "RateLimit-Remaining",
+  "RateLimit-Reset",
+  "Idempotency-Replayed",
+].join(", ");
 
 export function createLinkHandler(dependencies) {
   const {
@@ -249,6 +257,9 @@ function responseHeaders(requestId, origin, allowedOrigins) {
   });
   if (origin && allowedOrigins.includes(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
+    // API contract: the browser may read these, e.g. to show a support
+    // reference and honor Retry-After.
+    headers.set("Access-Control-Expose-Headers", EXPOSED_HEADERS);
   }
   return headers;
 }
