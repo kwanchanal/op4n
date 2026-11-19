@@ -294,17 +294,17 @@ assert(titleLimit.maxLength === 200, "Title input enforces maxlength 200");
 await evaluate(`document.querySelector('#linkTitle').value = ''; document.querySelector('#linkTitle').dispatchEvent(new Event('input', { bubbles: true }))`);
 
 // Client policy parity: short-link hosts and credentials are rejected before any request.
-for (const [value, part] of [["https://op4n.me/ABCDEFG", "shortened again"], ["https://user:pass@example.com/", "username or password"]]) {
+for (const [value, part] of [["https://op4n.me/ABCDEFG", "shortened again"], ["https://user:pass@example.com/", "username or password"], ["http://192.168.1.1/admin", "private or local network"]]) {
   await evaluate(`document.querySelector('#linkUrl').value = ${JSON.stringify(value)}; document.querySelector('#linkForm').requestSubmit()`);
   await sleep(50);
   assert((await evaluate(`document.querySelector('#linkUrlError').textContent`)).includes(part), `client rejects ${part} inline`);
 }
 
 const expectedRetry = {
-  offline: true, timeout: true, "rate-limit": true, "blocked-destination": false,
-  "server-error": true, unavailable: true, conflict: true, "malformed-response": false,
+  offline: true, timeout: true, "rate-limit": false, "blocked-destination": false,
+  "server-error": true, unavailable: true, conflict: true, paused: false, "malformed-response": false,
 };
-for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination", "server-error", "unavailable", "conflict", "malformed-response"]) {
+for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination", "server-error", "unavailable", "conflict", "paused", "malformed-response"]) {
   await evaluate(`(() => {
     window.op4nLinkService.prototypeControls.setCreateScenario(${JSON.stringify(scenario)});
     const input = document.querySelector('#linkUrl');
@@ -318,11 +318,32 @@ for (const scenario of ["offline", "timeout", "rate-limit", "blocked-destination
     value: document.querySelector('#linkUrl').value,
     count: document.querySelectorAll('.public-link-card').length,
     retry: !document.querySelector('#formRetryButton').hidden,
-    status: document.querySelector('#formStatus').textContent
+    status: document.querySelector('#formStatus').textContent,
+    urlError: document.querySelector('#linkUrlError').textContent,
+    urlInvalid: document.querySelector('#linkUrl').getAttribute('aria-invalid'),
+    submitDisabled: document.querySelector('[data-create-submit]').disabled
   })`);
   assert(errorState.state === "error", `${scenario} enters the error state`);
   assert(errorState.retry === expectedRetry[scenario], `${scenario} ${expectedRetry[scenario] ? "offers" : "does not offer"} Retry`);
-  assert(errorState.status.includes("(Ref mock-req)") && !/prototype|MOCK_|stack/i.test(errorState.status), `${scenario} shows a support reference and no raw detail`);
+  if (scenario === "blocked-destination") {
+    assert(errorState.urlError.includes("may be unsafe") && errorState.urlError.includes("support@op4n.com") && errorState.urlInvalid === "true", "blocked destination is explained inline under the URL field");
+    assert(!/web risk|google|phish|malware|category|provider/i.test(errorState.urlError), "blocked destination message reveals no provider or category");
+  } else {
+    assert(errorState.status.includes("(Ref mock-req)") && !/prototype|MOCK_|stack/i.test(errorState.status), `${scenario} shows a support reference and no raw detail`);
+  }
+  if (scenario === "paused") {
+    assert(errorState.status.includes("temporarily paused"), "kill switch shows the paused message");
+  }
+  if (scenario === "rate-limit") {
+    assert(errorState.status.includes("reached the limit") && errorState.status.includes("in a minute") && errorState.submitDisabled, "429 explains the wait and disables Make Link");
+    await sleep(2400);
+    const cooled = await evaluate(`({
+      disabled: document.querySelector('[data-create-submit]').disabled,
+      status: document.querySelector('#formStatus').textContent,
+      value: document.querySelector('#linkUrl').value
+    })`);
+    assert(!cooled.disabled && cooled.status === "You can make a link again." && cooled.value.includes("rate-limit"), "Make Link re-enables after Retry-After and announces it");
+  }
   assert(errorState.value.includes(scenario), `${scenario} preserves input`);
   assert(errorState.count === createdCount, `${scenario} does not create a card`);
 }

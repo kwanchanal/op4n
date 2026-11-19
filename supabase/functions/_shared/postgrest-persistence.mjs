@@ -39,6 +39,17 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
         p_canonical_base_url: input.canonicalBaseUrl,
       }, { detectCodeCollision: true });
     },
+    async consumeRateLimit(input) {
+      return callRpc("consume_rate_limit_v1", {
+        p_environment: input.environment,
+        p_class: input.limitClass,
+        p_identity: input.identity,
+        p_windows: input.windows,
+      });
+    },
+    async getFeatureFlags() {
+      return callRpc("get_feature_flags_v1", {});
+    },
     async resolveRedirect(canonicalCode) {
       return callRpc("resolve_canonical_redirect_v1", { p_code: canonicalCode });
     },

@@ -55,6 +55,8 @@
     createdLinks: [],
     createdLinksLoaded: false,
     createPhase: "idle",
+    rateLimitedUntil: 0,
+    rateLimitTimer: 0,
     createInFlight: false,
     lastCreateRequest: null,
     activeDialogTrigger: null,
@@ -174,7 +176,7 @@
     state.createPhase = phase;
     elements.linkForm.dataset.state = phase;
     elements.linkForm.setAttribute("aria-busy", String(creating));
-    elements.createSubmit.disabled = creating;
+    elements.createSubmit.disabled = creating || isRateLimited();
     elements.createSubmit.textContent = creating ? "Creating link…" : "Make Link";
     // Inputs stay readable but cannot drift while a request is unresolved.
     elements.linkUrl.readOnly = creating;
@@ -196,19 +198,55 @@
       case "INTERNAL_ERROR":
       case "NETWORK_ERROR":
       case "CLIENT_TIMEOUT":
-      case "RATE_LIMITED":
         return { message: RETRYABLE_ERROR, canRetry: true };
+      case "FEATURE_UNAVAILABLE":
+        return { message: "Link creation is temporarily paused. Please try again later.", canRetry: false };
       case "IDEMPOTENCY_CONFLICT":
         return { message: RETRYABLE_ERROR, canRetry: true, rotateKey: true };
-      case "DESTINATION_BLOCKED":
-        return { message: "This destination can't be shortened.", canRetry: false };
       default:
         return { message: FINAL_ERROR, canRetry: false };
     }
   }
 
   // Server-side destination rejections are shown inline under the URL field.
+  const BLOCKED_DESTINATION_MESSAGE =
+    "This destination can't be shortened on Op4n.com because it may be unsafe. " +
+    "If you think this is a mistake, contact support@op4n.com.";
+
+  function isRateLimited() {
+    return state.rateLimitedUntil > Date.now();
+  }
+
+  function describeWait(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "in a few minutes";
+    if (seconds < 60) return "in a minute";
+    const minutes = Math.ceil(seconds / 60);
+    return `in about ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  // 429: explain the wait, keep input, and re-enable Make Link automatically.
+  // Only the wait time is shown, never limiter internals.
+  function startRateLimitCooldown(error) {
+    const seconds = Number(error?.retryAfter);
+    const known = Number.isFinite(seconds) && seconds > 0;
+    const waitMs = (known ? seconds : 300) * 1000;
+    state.rateLimitedUntil = Date.now() + waitMs;
+    setCreatePhase(
+      "error",
+      withSupportReference(
+        `You've reached the limit for new links. You can make another ${describeWait(known ? seconds : NaN)}.`,
+        error,
+      ),
+    );
+    window.clearTimeout(state.rateLimitTimer);
+    state.rateLimitTimer = window.setTimeout(() => {
+      state.rateLimitedUntil = 0;
+      setCreatePhase("idle", "You can make a link again.");
+    }, waitMs);
+  }
+
   function getInlineDestinationError(error) {
+    if (error?.code === "DESTINATION_BLOCKED") return BLOCKED_DESTINATION_MESSAGE;
     if (error?.code === "UNSUPPORTED_PROTOCOL") return "Only HTTP and HTTPS destination URLs are supported.";
     if (error?.code === "VALIDATION_ERROR" && error.fields?.includes("destinationUrl")) {
       return "Check this URL and try again.";
@@ -658,6 +696,10 @@
       setTitleError();
       setFilter("created");
     } catch (error) {
+      if (error?.code === "RATE_LIMITED") {
+        startRateLimitCooldown(error);
+        return;
+      }
       const inlineMessage = getInlineDestinationError(error);
       if (inlineMessage) {
         setCreatePhase("error");
@@ -676,7 +718,7 @@
       state.createInFlight = false;
       if (state.createPhase === "creating") setCreatePhase("idle");
       elements.linkForm.setAttribute("aria-busy", "false");
-      elements.createSubmit.disabled = false;
+      elements.createSubmit.disabled = isRateLimited();
       elements.createSubmit.textContent = "Make Link";
       elements.linkUrl.readOnly = false;
       elements.linkTitle.readOnly = false;
@@ -686,7 +728,7 @@
 
   async function handleCreate(event) {
     event.preventDefault();
-    if (state.createInFlight) return;
+    if (state.createInFlight || isRateLimited()) return;
 
     setCreatePhase("validating");
     const validation = validateDestination(elements.linkUrl.value);
@@ -919,7 +961,7 @@
         const validation = validateDestination(elements.linkUrl.value);
         setUrlError(validation.valid ? "" : validation.message);
       }
-      if (state.createPhase === "error") setCreatePhase("idle");
+      if (state.createPhase === "error" && !isRateLimited()) setCreatePhase("idle");
     });
     elements.linkTitle.addEventListener("input", () => {
       if (elements.linkTitle.getAttribute("aria-invalid") === "true") {

@@ -60,6 +60,14 @@ export function checkNoRedirect(status, headers, expectedStatus) {
   return failures;
 }
 
+export function checkRateLimited(response) {
+  if (!response) return ["8 rapid creates with spoofed client headers were never rate-limited"];
+  const failures = [];
+  if (!(Number(response.headers.get("retry-after")) >= 1)) failures.push("429 has no Retry-After");
+  if (response.headers.get("ratelimit-remaining") !== "0") failures.push("429 RateLimit-Remaining is not 0");
+  return failures;
+}
+
 export function checkRuntimeConfig(text, ref) {
   return /adapter:\s*"http"/.test(text) &&
     text.includes(`https://${ref}.supabase.co/functions/v1/op4n-api`) &&
@@ -91,6 +99,9 @@ function selfTest() {
     [checkRedirect(301, new Headers({ location: SMOKE_DESTINATION, "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, false],
     [checkRedirect(302, new Headers({ location: "https://evil.example", "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, false],
     [checkNoRedirect(404, new Headers({ "cache-control": "no-store" }), 404).length === 0, true],
+    [checkRateLimited(null).length === 0, false],
+    [checkRateLimited({ headers: new Headers({ "retry-after": "42", "ratelimit-remaining": "0" }) }).length === 0, true],
+    [checkRateLimited({ headers: new Headers({ "ratelimit-remaining": "0" }) }).length === 0, false],
     [checkNoRedirect(404, new Headers({ location: "https://x", "cache-control": "no-store" }), 404).length === 0, false],
     [checkRuntimeConfig('environment: "local", adapter: "mock", apiBaseUrl: "", shortLinkHost: "op4n.me"', "abcdefghijklmnopqrst"), false],
     [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://zzzzzzzzzzzzzzzzzzzz.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), false],
@@ -148,6 +159,30 @@ async function run() {
   failures.push(...checkNoRedirect(malformed.status, malformed.headers, 404).map((item) => `malformed path: ${item}`));
   const post = await fetch(`${SHORT_HOST_ORIGIN}/ZZZZZZZZZZ`, { method: "POST", redirect: "manual" });
   failures.push(...checkNoRedirect(post.status, post.headers, 405).map((item) => `POST: ${item}`));
+
+  // Rate limit: the real Postgres limiter allows 5 creates per minute per
+  // client. Spoofed forwarding headers must not create fresh identities, so a
+  // burst from this runner is limited no matter what the headers claim.
+  let limitedResponse = null;
+  for (let attempt = 0; attempt < 8 && !limitedResponse; attempt += 1) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": randomUUID(),
+        Origin: STAGING_ORIGIN,
+        "X-Forwarded-For": `203.0.113.${attempt + 10}`,
+        "X-Real-IP": `203.0.113.${attempt + 10}`,
+        "CF-Connecting-IP": `203.0.113.${attempt + 10}`,
+      },
+      body: JSON.stringify({ destinationUrl: `${SMOKE_DESTINATION}/burst-${attempt}`, title: "Rate-limit smoke" }),
+    });
+    await response.body?.cancel();
+    if (response.status === 429) limitedResponse = response;
+    else if (response.status !== 201) failures.push(`burst request returned ${response.status}`);
+  }
+  failures.push(...checkRateLimited(limitedResponse));
 
   // The deployed frontend must select the http adapter and point at this
   // project's API. Pages can take a few seconds to serve a new deployment.
