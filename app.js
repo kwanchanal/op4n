@@ -221,9 +221,21 @@
     return requestId ? `${message} (Ref ${requestId.slice(0, 8)})` : message;
   }
 
+  const clickNumberFormat = new Intl.NumberFormat("en-US");
+
+  // Aggregate total of successful redirects. "Clicks", never people or visitors.
+  // A missing or invalid value is shown as unavailable rather than 0.
+  function hasClickCount(value) {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0;
+  }
+
   function formatClicks(value) {
-    const count = Math.max(0, Math.trunc(Number(value) || 0));
-    return `${count} ${count === 1 ? "click" : "clicks"}`;
+    if (!hasClickCount(value)) return "— clicks";
+    return `${clickNumberFormat.format(value)} ${value === 1 ? "click" : "clicks"}`;
+  }
+
+  function describeClicks(value) {
+    return hasClickCount(value) ? formatClicks(value) : "Click count temporarily unavailable";
   }
 
   async function copyText(value) {
@@ -356,9 +368,9 @@
     const { scheme: shortScheme, display: shortDisplay } = splitShortUrl(shortLink);
     const safeShortScheme = escapeHTML(shortScheme);
     const safeShortDisplay = escapeHTML(shortDisplay);
-    // The card never holds the full destination: openUrl is the canonical
-    // short URL from the API (the mock opens its fixture directly) and the
-    // summary is the server-approved display value.
+    // The card never holds the full destination: Open navigates through the
+    // canonical short URL (openUrl), so the redirect service resolves the
+    // stored destination and counts the click. The summary is server-approved.
     const openUrl = getSafeHttpUrl(link.openUrl);
     const destinationSummary = openUrl ? String(link.destinationSummary || "") : "";
     const safeTitle = escapeHTML(link.title || "Untitled link");
@@ -383,16 +395,16 @@
           </div>
           <div class="link-url-row link-destination-field">
             <span class="link-field-label">Destination URL :</span>
-            ${openUrl ? `<button class="link-url open-destination-btn" type="button" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
+            ${openUrl ? `<a class="link-url open-destination-btn" href="${escapeHTML(openUrl)}" target="_blank" rel="noopener noreferrer" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
               ${safeDestinationSummary}
-            </button>` : '<span class="link-url">Destination unavailable</span>'}
+            </a>` : '<span class="link-url">Destination unavailable</span>'}
           </div>
         </div>
       </div>
 
       <div class="link-card-toolbar" aria-label="Link actions">
         <div class="guest-action-row">
-          ${capabilities.guestActions.includes("clicks") ? `<button class="guest-action-button public-click-count click-count-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Clicks" aria-label="View aggregate clicks: ${formatClicks(link.clickCount)}">
+          ${capabilities.guestActions.includes("clicks") ? `<button class="guest-action-button public-click-count click-count-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Clicks" aria-label="View aggregate clicks: ${describeClicks(link.clickCount)}">
             <span class="material-symbols-outlined" aria-hidden="true">bar_chart</span>
             <strong>${formatClicks(link.clickCount)}</strong>
           </button>` : ""}
@@ -400,11 +412,11 @@
             <span class="material-symbols-outlined copy-icon" aria-hidden="true">content_copy</span>
             <span class="sr-only action-label">Copy short link</span>
           </button>` : ""}
-          ${capabilities.guestActions.includes("open") && openUrl ? `<button class="guest-action-button open-destination-btn" type="button"
+          ${capabilities.guestActions.includes("open") && openUrl ? `<a class="guest-action-button open-destination-btn" href="${escapeHTML(openUrl)}" target="_blank" rel="noopener noreferrer"
              data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Open destination" aria-label="Open destination ${safeDestinationSummary} in a new tab">
             <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
             <span class="sr-only">Open destination</span>
-          </button>` : ""}
+          </a>` : ""}
           ${capabilities.guestActions.includes("report") ? `<button class="guest-action-button report-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Report link" aria-label="Report ${safeShortLink}">
             <span class="material-symbols-outlined" aria-hidden="true">flag</span>
             <span class="sr-only">Report link</span>
@@ -430,12 +442,6 @@
       <div class="card-live-status" role="status" aria-live="polite"></div>
     `;
 
-    card.querySelectorAll(".open-destination-btn").forEach((button) => {
-      button.addEventListener("click", () => {
-        const openedWindow = window.open(openUrl, "_blank", "noopener,noreferrer");
-        if (openedWindow) openedWindow.opener = null;
-      });
-    });
 
     let copyResetTimer = 0;
     card.querySelector(".copy-link-btn")?.addEventListener("click", async (event) => {
@@ -465,7 +471,9 @@
 
     card.querySelector(".click-count-btn")?.addEventListener("click", () => {
       card.querySelector(".card-live-status").textContent =
-        `This public link has ${formatClicks(link.clickCount)}.`;
+        hasClickCount(link.clickCount)
+          ? `This public link has ${formatClicks(link.clickCount)}.`
+          : "Click count temporarily unavailable.";
     });
 
     card.querySelector(".report-link-btn")?.addEventListener("click", () => {

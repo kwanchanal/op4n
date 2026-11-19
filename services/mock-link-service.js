@@ -28,7 +28,10 @@
       const parsed = new URL(record.destinationUrl);
       if (["http:", "https:"].includes(parsed.protocol)) {
         destinationSummary = parsed.origin;
-        openUrl = parsed.href;
+        // Mock short URLs do not resolve, so the mock opens the fixture's
+        // origin and path. Query strings and fragments are never placed in
+        // the page, matching the production rule.
+        openUrl = `${parsed.origin}${parsed.pathname}`;
       }
     } catch {
       // Leave the summary empty; the card shows "Destination unavailable".

@@ -1453,6 +1453,17 @@ display: block;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.public-link-card a.link-url {
+  text-decoration: none;
+}
+.public-link-card a.link-url:hover,
+.public-link-card a.link-url:focus-visible {
+  text-decoration: underline;
+}
+a.guest-action-button {
+  text-decoration: none;
+  color: inherit;
+}
 .public-link-card button.link-url {
   appearance: none;
   border: 0;
