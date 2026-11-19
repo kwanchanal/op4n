@@ -1048,6 +1048,7 @@ components:
             - UNAUTHORIZED
             - FORBIDDEN
             - DEPENDENCY_UNAVAILABLE
+            - FEATURE_UNAVAILABLE
             - INTERNAL_ERROR
         message: { type: string, minLength: 1, maxLength: 240 }
         requestId: { $ref: '#/components/schemas/RequestId' }
@@ -1262,7 +1263,10 @@ components:
               message: This operation is not permitted.
               requestId: 00000000-0000-4000-8000-000000000011
     DependencyUnavailable:
-      description: A required dependency or readiness check is temporarily unavailable.
+      description: >-
+        A required dependency or readiness check is temporarily unavailable
+        (DEPENDENCY_UNAVAILABLE), or the operation is paused by an operational
+        kill switch (FEATURE_UNAVAILABLE).
       headers:
         X-Request-ID: { $ref: '#/components/headers/RequestId' }
         Cache-Control: { $ref: '#/components/headers/NoStore' }

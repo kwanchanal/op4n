@@ -23,6 +23,7 @@ export function createLinkHandler(dependencies) {
     destinationPolicy,
     safetyPort,
     rateLimitGate,
+    featureFlags,
     persistence,
     generateCanonicalCode,
     destinationHmacKey,
@@ -48,6 +49,20 @@ export function createLinkHandler(dependencies) {
     const path = new URL(request.url).pathname;
     if (!path.endsWith("/api/v1/links") || request.method !== "POST") {
       return errorResponse(405, "VALIDATION_ERROR", "The request method or path is not supported.", id, headers);
+    }
+
+    // Kill switch: an unreadable flag table counts as paused (fail safe).
+    if (featureFlags) {
+      let enabled = false;
+      try {
+        enabled = await featureFlags.isEnabled("guest_creation");
+      } catch {
+        enabled = false;
+      }
+      if (!enabled) {
+        headers.set("Retry-After", "60");
+        return errorResponse(503, "FEATURE_UNAVAILABLE", "Link creation is temporarily paused.", id, headers);
+      }
     }
 
     if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
@@ -118,7 +133,7 @@ export function createLinkHandler(dependencies) {
     }
     let rateLimit;
     try {
-      rateLimit = await rateLimitGate.check({ operation: "public-create" });
+      rateLimit = await rateLimitGate.check({ operation: "public-create", request });
     } catch {
       return dependencyUnavailable(id, headers);
     }

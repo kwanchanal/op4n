@@ -64,11 +64,13 @@ window.OP4N_MOCK_API_CONFIG = Object.freeze({
     // smoke test exercises the production error mapping.
     offline: Object.freeze({ type: "error", code: "NETWORK_ERROR", status: 0 }),
     timeout: Object.freeze({ type: "error", code: "CLIENT_TIMEOUT", status: 0, delayMs: 360 }),
-    "rate-limit": Object.freeze({ type: "error", code: "RATE_LIMITED", status: 429, retryAfter: 60 }),
+    // Short Retry-After keeps the smoke test fast; the UI logic is the same.
+    "rate-limit": Object.freeze({ type: "error", code: "RATE_LIMITED", status: 429, retryAfter: 2 }),
     "blocked-destination": Object.freeze({ type: "error", code: "DESTINATION_BLOCKED", status: 422 }),
     "server-error": Object.freeze({ type: "error", code: "INTERNAL_ERROR", status: 500 }),
     unavailable: Object.freeze({ type: "error", code: "DEPENDENCY_UNAVAILABLE", status: 503, retryAfter: 1 }),
     conflict: Object.freeze({ type: "error", code: "IDEMPOTENCY_CONFLICT", status: 409 }),
+    paused: Object.freeze({ type: "error", code: "FEATURE_UNAVAILABLE", status: 503, retryAfter: 60 }),
     "malformed-response": Object.freeze({ type: "malformed" })
   })
 });

@@ -4,6 +4,8 @@ import {
   deterministicLocalRateLimitGate,
 } from "../_shared/create-link-handler.mjs";
 import { createDestinationPolicy } from "../_shared/destination-policy.mjs";
+import { createFeatureFlagReader } from "../_shared/feature-flags.mjs";
+import { createPostgresRateLimitGate, resolveRateLimits } from "../_shared/rate-limit.mjs";
 import { createClickHandler, createRedirectLookupHandler } from "../_shared/internal-handlers.mjs";
 import { routeOperation } from "../_shared/router.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
@@ -49,6 +51,21 @@ const persistence = createPostgrestPersistence({
   secretKey: supabaseSecretKey,
 });
 const internalCredential = Deno.env.get("INTERNAL_SERVICE_CREDENTIAL");
+const hmacBytes = new TextEncoder().encode(hmacMaterial || "");
+
+// The Postgres limiter derives its daily identity key from the destination
+// HMAC key with domain separation ("op4n-rate-limit:<date>"); see rate-limit.mjs.
+function selectRateLimitGate() {
+  if (runtimeModes.rateLimit === "real") {
+    return createPostgresRateLimitGate({
+      environment,
+      persistence,
+      masterKey: hmacBytes,
+      limits: resolveRateLimits(Deno.env.get("OP4N_RATE_LIMITS")),
+    });
+  }
+  return runtimeModes.rateLimit === "deterministic" ? deterministicLocalRateLimitGate() : null;
+}
 
 const createHandler = createLinkHandler({
   environment,
@@ -69,12 +86,11 @@ const createHandler = createLinkHandler({
       return configuredSafetyPort.decide(input);
     },
   },
-  rateLimitGate: runtimeModes.rateLimit === "deterministic"
-    ? deterministicLocalRateLimitGate()
-    : null,
+  rateLimitGate: selectRateLimitGate(),
+  featureFlags: createFeatureFlagReader({ persistence }),
   persistence,
   generateCanonicalCode: () => localCodeSequence.shift() || defaultCodeGenerator(),
-  destinationHmacKey: new TextEncoder().encode(hmacMaterial || ""),
+  destinationHmacKey: hmacBytes,
   fingerprintKeyVersion: Deno.env.get("DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT") || "",
 });
 

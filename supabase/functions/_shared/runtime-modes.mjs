@@ -23,7 +23,10 @@ export function resolveRuntimeModes({ environment, safetyMode, rateLimitMode }) 
   }
 
   let rateLimit = "none";
-  if (rateLimitMode) {
+  if (rateLimitMode === "postgres") {
+    // The real Postgres limiter is valid in every environment.
+    rateLimit = "real";
+  } else if (rateLimitMode) {
     if (!DETERMINISTIC_RATE_LIMIT_MODES.has(rateLimitMode)) {
       throw new Error("OP4N_RATE_LIMIT_MODE has an unsupported value.");
     }

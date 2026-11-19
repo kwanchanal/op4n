@@ -133,7 +133,7 @@ jobs:
           {
             echo "OP4N_ENVIRONMENT=staging"
             echo "OP4N_SAFETY_MODE=deterministic-approved"
-            echo "OP4N_RATE_LIMIT_MODE=deterministic"
+            echo "OP4N_RATE_LIMIT_MODE=postgres"
             echo "OP4N_SUPABASE_SECRET_KEY=$STAGING_SECRET_KEY"
             echo "DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT=$HMAC_KEY"
             echo "DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT=$HMAC_VERSION"
