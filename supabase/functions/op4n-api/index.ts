@@ -5,22 +5,32 @@ import {
 } from "../_shared/create-link-handler.mjs";
 import { createDestinationPolicy } from "../_shared/destination-policy.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
+import { resolveRuntimeModes } from "../_shared/runtime-modes.mjs";
 import { createConfiguredSafetyPort } from "../_shared/safety-port.mjs";
 
 const environment = Deno.env.get("OP4N_ENVIRONMENT") || "local";
+// Throws at startup for an unknown environment or a deterministic adapter in
+// Production, so the function cannot serve requests in an unsafe mode.
+const runtimeModes = resolveRuntimeModes({
+  environment,
+  safetyMode: Deno.env.get("OP4N_SAFETY_MODE"),
+  rateLimitMode: Deno.env.get("OP4N_RATE_LIMIT_MODE"),
+});
 const localMode = environment === "local";
 const hmacMaterial = Deno.env.get("DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT");
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ||
   (localMode
     ? Deno.env.get("OP4N_LOCAL_SUPABASE_URL") || Deno.env.get("API_URL")
     : undefined);
-const supabaseSecretKey = Deno.env.get("SUPABASE_SECRET_KEY") ||
+// Hosted Supabase reserves the SUPABASE_ prefix for function secrets, so the
+// deploy workflow stores the backend secret key as OP4N_SUPABASE_SECRET_KEY.
+const supabaseSecretKey = Deno.env.get("OP4N_SUPABASE_SECRET_KEY") ||
+  Deno.env.get("SUPABASE_SECRET_KEY") ||
   (localMode
     ? Deno.env.get("OP4N_LOCAL_SUPABASE_SECRET_KEY") || Deno.env.get("SECRET_KEY")
     : undefined);
 const configuredSafetyPort = createConfiguredSafetyPort({
-  environment,
-  mode: Deno.env.get("OP4N_SAFETY_MODE"),
+  safetyKind: runtimeModes.safety,
 });
 const defaultCodeGenerator = createCanonicalCodeGenerator({
   reservedCodes: (Deno.env.get("OP4N_RESERVED_CODES") || "").split(",").filter(Boolean),
@@ -51,7 +61,7 @@ const handler = createLinkHandler({
       return configuredSafetyPort.decide(input);
     },
   },
-  rateLimitGate: localMode && Deno.env.get("OP4N_RATE_LIMIT_MODE") === "deterministic-local"
+  rateLimitGate: runtimeModes.rateLimit === "deterministic"
     ? deterministicLocalRateLimitGate()
     : null,
   persistence: createPostgrestPersistence({

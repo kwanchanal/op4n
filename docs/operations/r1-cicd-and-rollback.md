@@ -25,6 +25,14 @@ separate protected `Staging` and `Production` GitHub Environments and provider
 targets under Orders 3, 5, 6, and 7. That later activation requires review of a
 workflow change; it must never be achieved by adding a fallback in this record.
 
+**Staging activation (Feature Inventory: “Provision Staging and enable gated
+deployments”).** The founder created the protected `staging` GitHub
+Environment (required reviewer: founder; deployment branch: `main` only) and
+the Staging Supabase project and Cloudflare credentials. The reviewed
+`.github/workflows/deploy-staging.yml` is the only workflow allowed to bind an
+Environment or reference secrets; see [Staging deploy](#staging-deploy).
+Production deployment remains blocked until the R1 production cutover card.
+
 ## Quality-gate flow
 
 ```mermaid
@@ -71,7 +79,7 @@ identifier, request body, or protected destination.
 | --- | --- | --- | --- | --- |
 | CI | PR, push to `main`, manual | `contents: read` | No Environment, provider, Staging, or Production secret | Same PR/ref may cancel an obsolete CI run. |
 | Deployment readiness | Manual only | `contents: read` | No Environment or secret; no provider operation | One target readiness run at a time; `cancel-in-progress: false`. |
-| Future Staging deploy | Not enabled | Minimum reviewed permissions plus only Staging Environment credentials | Exact Staging target and reciprocal-negative check | Queue; never cancel an in-progress deployment. |
+| Staging deploy | Manual only (`workflow_dispatch`) | `contents: read`; secrets only in the job bound to the protected `staging` Environment | Credential-free verify job first; Staging-named, Singapore, healthy project preflight; Production origin refusal smoke | `deploy-staging` group; `cancel-in-progress: false`. |
 | Future Production promotion | Not enabled | Minimum reviewed permissions plus only Production Environment credentials | Exact Production target after founder approval | Queue; never cancel an in-progress deployment. |
 
 Every external Action is pinned to a reviewed 40-character commit SHA with a
@@ -169,6 +177,53 @@ The sequence is:
 
 The current readiness workflow exercises only identity and fail-closed rules.
 It cannot satisfy steps 2–8 and must never be represented as successful deploy.
+
+## Staging deploy
+
+`.github/workflows/deploy-staging.yml` implements steps 1–4 above for Staging
+only. Inputs are one full release SHA that is already an ancestor of `main` and
+the artifact digest from that SHA's CI release candidate.
+
+1. **verify-candidate** (no Environment, no secrets): validates the inputs,
+   checks out the exact SHA, proves it is on `main`, re-runs every
+   credential-free gate, and rebuilds the artifact to compare its digest.
+2. **deploy-staging** (Environment `staging`, waits for founder approval):
+   rebuilds and re-verifies the artifact, then in order:
+   1. `tests/staging-preflight.mjs` confirms through the Supabase Management API
+      that the project is `ACTIVE_HEALTHY`, in Singapore, Staging-named, not
+      Production-named, and that `db` and `rest` are healthy. Any failure stops
+      before mutation.
+   2. `supabase db push` applies pending migrations.
+   3. `supabase secrets set` writes function secrets from a mode-600 temporary
+      file: `OP4N_ENVIRONMENT=staging`, deterministic safety and rate-limit
+      modes, `OP4N_SUPABASE_SECRET_KEY` (Supabase reserves the `SUPABASE_`
+      prefix for function secrets), and the destination HMAC key and version.
+   4. `supabase functions deploy op4n-api --no-verify-jwt --use-api`.
+   5. `wrangler pages deploy` publishes the allowlisted site to the
+      `op4n-staging` Cloudflare Pages project (created on first run).
+   6. `tests/staging-smoke.mjs` creates one synthetic link from Origin
+      `https://staging.op4n.com` (expects `201`, the exact six PublicLinkCard
+      fields, a `staging.op4n.me` short URL, and `no-store`) and sends a
+      preflight from Origin `https://op4n.com` (expects no allow-origin).
+
+Pinned tool versions: Supabase CLI `3.0.0`, wrangler `4.158.0`, run through
+`npx` because the Supabase package installs its binary in a postinstall script
+that the locked `npm ci --ignore-scripts` install deliberately skips.
+
+Deterministic safety and rate-limit modes are accepted only in `local` and
+`staging`. `supabase/functions/_shared/runtime-modes.mjs` throws at startup for
+an unknown environment or any deterministic mode in Production, so the function
+cannot serve requests in that state (`tests/server/runtime-modes.test.mjs`).
+
+**Founder one-time step after the first run:** in Cloudflare Pages →
+`op4n-staging` → Custom domains, add `staging.op4n.com`. Until then the Staging
+frontend is reachable only on its `pages.dev` address.
+
+**Staging rollback:** frontend — Cloudflare Pages → `op4n-staging` →
+Deployments → roll back to the previous deployment, or re-dispatch the workflow
+with the previous SHA and digest. Edge Function — re-dispatch the previous SHA.
+Database — migrations are forward-only; follow Order 5 for any corrective
+migration. Each rollback re-runs the Staging smoke.
 
 ## Rollback and feature shutdown
 
