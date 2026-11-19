@@ -30,6 +30,10 @@ test("creates a six-field public Guest card with contract headers", async () => 
   assert.equal(response.headers.get("Vary"), "Origin");
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
   assert.equal(response.headers.get("Idempotency-Replayed"), "false");
+  assert.equal(
+    response.headers.get("Access-Control-Expose-Headers"),
+    "X-Request-ID, Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, Idempotency-Replayed",
+  );
   assert.equal(Object.keys(body).length, 6);
   assert.deepEqual(body.safeDestinationSummary, {
     origin: "https://example.com",
@@ -92,6 +96,16 @@ test("handles exact-origin browser preflight without credentials", async () => {
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), null);
   assert.equal(response.headers.get("Vary"), "Origin");
+});
+
+test("does not expose headers to a disallowed origin", async () => {
+  const handler = buildHandler({ persistence: memoryPersistence() });
+  const request = createRequest({ destinationUrl: "https://example.com/other-origin" });
+  const foreign = new Request(request, { headers: new Headers(request.headers) });
+  foreign.headers.set("Origin", "https://evil.example");
+  const response = await handler(foreign);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), null);
+  assert.equal(response.headers.get("Access-Control-Expose-Headers"), null);
 });
 
 test("rejects unsupported destinations before persistence", async () => {

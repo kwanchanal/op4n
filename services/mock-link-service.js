@@ -7,6 +7,7 @@
     new URLSearchParams(window.location.search).get("create") ||
     config.defaultCreateScenario;
   let creationSequence = 0;
+  let lastCreateRequest = null;
   const successfulRequests = new Map();
 
   function clone(value) {
@@ -69,6 +70,7 @@
   }
 
   async function createLink(request) {
+    lastCreateRequest = clone(request);
     const scenario = config.creationScenarios[createScenario] ||
       config.creationScenarios[config.defaultCreateScenario];
     await wait(scenario.delayMs || config.creationDelayMs);
@@ -80,10 +82,19 @@
     if (scenario.type === "error") {
       const error = new Error("Configured prototype creation error");
       error.code = scenario.code;
+      error.status = scenario.status;
+      error.requestId = "mock-request-0000";
+      error.retryAfter = scenario.retryAfter ?? null;
+      error.fields = [];
       throw error;
     }
     if (scenario.type === "malformed") {
-      return { meta: { prototype: true, requestId: request.requestId } };
+      const error = new Error("Malformed prototype response");
+      error.code = "MALFORMED_RESPONSE";
+      error.status = 201;
+      error.requestId = "mock-request-0000";
+      error.fields = [];
+      throw error;
     }
 
     creationSequence += 1;
@@ -135,6 +146,9 @@
       },
       getCreateScenarios() {
         return Object.keys(config.creationScenarios);
+      },
+      getLastCreateRequest() {
+        return lastCreateRequest ? clone(lastCreateRequest) : null;
       }
     })
   });

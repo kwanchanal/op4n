@@ -15,11 +15,13 @@
     "safeDestinationSummary",
   ]);
 
-  function apiError(code, status, requestId) {
+  function apiError(code, status, requestId, extra = {}) {
     const error = new Error("Link creation request failed");
     error.code = code;
     error.status = status;
     error.requestId = requestId || null;
+    error.retryAfter = Number.isFinite(extra.retryAfter) ? extra.retryAfter : null;
+    error.fields = Array.isArray(extra.fields) ? extra.fields : [];
     return error;
   }
 
@@ -66,10 +68,11 @@
         return { links: [], meta: { sessionOnly: true } };
       },
 
-      async createLink(request) {
+      async createLink(request, { signal } = {}) {
         let response;
         try {
           response = await doFetch(endpoint, {
+            signal,
             method: "POST",
             mode: "cors",
             credentials: "omit",
@@ -83,14 +86,21 @@
               title: request.title ? request.title : null,
             }),
           });
-        } catch {
+        } catch (error) {
+          if (error?.name === "AbortError") throw apiError("CLIENT_TIMEOUT", 0, null);
           throw apiError("NETWORK_ERROR", 0, null);
         }
         const requestId = response.headers.get("X-Request-ID");
         const body = await response.json().catch(() => null);
         if (!response.ok) {
           const code = typeof body?.error?.code === "string" ? body.error.code : "HTTP_ERROR";
-          throw apiError(code, response.status, requestId);
+          const retryHeader = response.headers.get("Retry-After");
+          throw apiError(code, response.status, requestId, {
+            retryAfter: retryHeader === null ? NaN : Number(retryHeader),
+            fields: (Array.isArray(body?.error?.details) ? body.error.details : [])
+              .map((detail) => detail?.field)
+              .filter((field) => typeof field === "string"),
+          });
         }
         return {
           link: toCardModel(body),

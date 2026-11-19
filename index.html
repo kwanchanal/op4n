@@ -19,7 +19,7 @@
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=id26" />
+    <link rel="stylesheet" href="styles.css?v=r1-batch-a" />
   </head>
   <body class="dashboard">
     <div class="top-banner">
@@ -62,7 +62,8 @@
             <form class="link-entry-form" id="linkForm" novalidate>
               <div class="field">
                 <label for="linkTitle">Title (Optional)</label>
-                <input id="linkTitle" name="title" type="text" placeholder="Name this link" />
+                <input id="linkTitle" name="title" type="text" maxlength="200" aria-describedby="linkTitleError" placeholder="Name this link" />
+                <p class="field-error" id="linkTitleError" aria-live="polite"></p>
               </div>
               <div class="field">
                 <label for="linkUrl">URL</label>
@@ -206,16 +207,16 @@
     </dialog>
 
     <script src="config/runtime-config.js?v=r1-order21"></script>
-    <script src="data/mock-api-config.js?v=id25"></script>
+    <script src="data/mock-api-config.js?v=r1-batch-a"></script>
     <script src="data/mock-report-config.js?v=id25"></script>
     <script src="data/qr-showcase-config.js?v=id25"></script>
     <script src="services/prototype-storage.js?v=id25"></script>
-    <script src="services/destination-url-validation.js?v=r1-order11-18"></script>
-    <script src="services/http-link-service.js?v=r1-order21"></script>
-    <script src="services/mock-link-service.js?v=r1-order21"></script>
+    <script src="services/destination-url-validation.js?v=r1-batch-a"></script>
+    <script src="services/http-link-service.js?v=r1-batch-a"></script>
+    <script src="services/mock-link-service.js?v=r1-batch-a"></script>
     <script src="services/link-service.js?v=r1-order21"></script>
     <script src="services/mock-report-service.js?v=id25"></script>
     <script src="shared-sidebar.js?v=id25"></script>
-    <script src="app.js?v=r1-order21"></script>
+    <script src="app.js?v=r1-batch-a"></script>
   </body>
 </html>

@@ -60,11 +60,15 @@ window.OP4N_MOCK_API_CONFIG = Object.freeze({
   }),
   creationScenarios: Object.freeze({
     success: Object.freeze({ type: "success", clickCount: 0 }),
-    offline: Object.freeze({ type: "error", code: "MOCK_OFFLINE" }),
-    timeout: Object.freeze({ type: "error", code: "MOCK_TIMEOUT", delayMs: 360 }),
-    "rate-limit": Object.freeze({ type: "error", code: "MOCK_RATE_LIMIT" }),
-    "blocked-destination": Object.freeze({ type: "error", code: "MOCK_BLOCKED_DESTINATION" }),
-    "server-error": Object.freeze({ type: "error", code: "MOCK_SERVER_ERROR" }),
+    // Error scenarios emit the same codes as the R1 API error envelope so the
+    // smoke test exercises the production error mapping.
+    offline: Object.freeze({ type: "error", code: "NETWORK_ERROR", status: 0 }),
+    timeout: Object.freeze({ type: "error", code: "CLIENT_TIMEOUT", status: 0, delayMs: 360 }),
+    "rate-limit": Object.freeze({ type: "error", code: "RATE_LIMITED", status: 429, retryAfter: 60 }),
+    "blocked-destination": Object.freeze({ type: "error", code: "DESTINATION_BLOCKED", status: 422 }),
+    "server-error": Object.freeze({ type: "error", code: "INTERNAL_ERROR", status: 500 }),
+    unavailable: Object.freeze({ type: "error", code: "DEPENDENCY_UNAVAILABLE", status: 503, retryAfter: 1 }),
+    conflict: Object.freeze({ type: "error", code: "IDEMPOTENCY_CONFLICT", status: 409 }),
     "malformed-response": Object.freeze({ type: "malformed" })
   })
 });
