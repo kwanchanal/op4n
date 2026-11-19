@@ -5,6 +5,8 @@
 import { randomUUID } from "node:crypto";
 
 const STAGING_ORIGIN = "https://staging.op4n.com";
+const SHORT_HOST_ORIGIN = "https://staging.op4n.me";
+const SMOKE_DESTINATION = "https://example.com/op4n-staging-smoke";
 const PRODUCTION_ORIGIN = "https://op4n.com";
 const CARD_FIELDS = [
   "aggregateTotalClicks",
@@ -42,6 +44,22 @@ export function checkForeignPreflight(status, headers) {
   return failures;
 }
 
+export function checkRedirect(status, headers, expectedLocation) {
+  const failures = [];
+  if (status !== 302) failures.push(`redirect returned ${status}, expected 302`);
+  if (headers.get("location") !== expectedLocation) failures.push("redirect Location is not the stored destination");
+  if (headers.get("cache-control") !== "no-store") failures.push("redirect is not no-store");
+  return failures;
+}
+
+export function checkNoRedirect(status, headers, expectedStatus) {
+  const failures = [];
+  if (status !== expectedStatus) failures.push(`expected ${expectedStatus}, got ${status}`);
+  if (headers.get("location")) failures.push("non-redirect response carried a Location header");
+  if (headers.get("cache-control") !== "no-store") failures.push("non-redirect response is not no-store");
+  return failures;
+}
+
 export function checkRuntimeConfig(text, ref) {
   return /adapter:\s*"http"/.test(text) &&
     text.includes(`https://${ref}.supabase.co/functions/v1/op4n-api`) &&
@@ -69,6 +87,11 @@ function selfTest() {
     [checkForeignPreflight(403, new Headers()).length === 0, true],
     [checkForeignPreflight(204, new Headers({ "access-control-allow-origin": PRODUCTION_ORIGIN })).length === 0, false],
     [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://abcdefghijklmnopqrst.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), true],
+    [checkRedirect(302, new Headers({ location: SMOKE_DESTINATION, "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, true],
+    [checkRedirect(301, new Headers({ location: SMOKE_DESTINATION, "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, false],
+    [checkRedirect(302, new Headers({ location: "https://evil.example", "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, false],
+    [checkNoRedirect(404, new Headers({ "cache-control": "no-store" }), 404).length === 0, true],
+    [checkNoRedirect(404, new Headers({ location: "https://x", "cache-control": "no-store" }), 404).length === 0, false],
     [checkRuntimeConfig('environment: "local", adapter: "mock", apiBaseUrl: "", shortLinkHost: "op4n.me"', "abcdefghijklmnopqrst"), false],
     [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://zzzzzzzzzzzzzzzzzzzz.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), false],
   ];
@@ -94,7 +117,7 @@ async function run() {
       Origin: STAGING_ORIGIN,
     },
     body: JSON.stringify({
-      destinationUrl: "https://example.com/op4n-staging-smoke",
+      destinationUrl: SMOKE_DESTINATION,
       title: `Staging deploy smoke ${releaseSha.slice(0, 7)}`.trim(),
     }),
   });
@@ -110,6 +133,21 @@ async function run() {
     },
   });
   failures.push(...checkForeignPreflight(foreign.status, foreign.headers));
+
+  // The Worker on staging.op4n.me must redirect the new code and refuse others.
+  const code = body?.canonicalCode;
+  if (typeof code === "string") {
+    const redirect = await fetch(`${SHORT_HOST_ORIGIN}/${code}`, { redirect: "manual" });
+    failures.push(...checkRedirect(redirect.status, redirect.headers, SMOKE_DESTINATION));
+    const head = await fetch(`${SHORT_HOST_ORIGIN}/${code}`, { method: "HEAD", redirect: "manual" });
+    failures.push(...checkRedirect(head.status, head.headers, SMOKE_DESTINATION).map((item) => `HEAD ${item}`));
+  }
+  const unknown = await fetch(`${SHORT_HOST_ORIGIN}/ZZZZZZZZZZ`, { redirect: "manual" });
+  failures.push(...checkNoRedirect(unknown.status, unknown.headers, 404).map((item) => `unknown code: ${item}`));
+  const malformed = await fetch(`${SHORT_HOST_ORIGIN}/not/a/code`, { redirect: "manual" });
+  failures.push(...checkNoRedirect(malformed.status, malformed.headers, 404).map((item) => `malformed path: ${item}`));
+  const post = await fetch(`${SHORT_HOST_ORIGIN}/ZZZZZZZZZZ`, { method: "POST", redirect: "manual" });
+  failures.push(...checkNoRedirect(post.status, post.headers, 405).map((item) => `POST: ${item}`));
 
   // The deployed frontend must select the http adapter and point at this
   // project's API. Pages can take a few seconds to serve a new deployment.

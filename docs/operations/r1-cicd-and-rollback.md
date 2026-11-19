@@ -197,21 +197,32 @@ the artifact digest from that SHA's CI release candidate.
    3. `supabase secrets set` writes function secrets from a mode-600 temporary
       file: `OP4N_ENVIRONMENT=staging`, deterministic safety and rate-limit
       modes, `OP4N_SUPABASE_SECRET_KEY` (Supabase reserves the `SUPABASE_`
-      prefix for function secrets), and the destination HMAC key and version.
+      prefix for function secrets), the destination HMAC key and version, and
+      `INTERNAL_SERVICE_CREDENTIAL` (at least 32 characters; checked before
+      any mutation).
    4. `supabase functions deploy op4n-api --no-verify-jwt --use-api`.
-   5. Writes `config/runtime-config.js` with `environment: "staging"`,
+   5. `wrangler deploy --env staging` publishes `workers/redirect` on the
+      route `staging.op4n.me/*` with `API_BASE_URL` for this project, then
+      `wrangler secret put INTERNAL_SERVICE_CREDENTIAL` sets the same
+      credential on the Worker. Until the secret is set the Worker fails
+      closed with its 503 page.
+   6. Writes `config/runtime-config.js` with `environment: "staging"`,
       `adapter: "http"`, the Staging `op4n-api` base URL, and
       `staging.op4n.me`. This is the only deployed file that differs from the
       verified artifact, and it contains no secret; the committed default
       keeps local development on the mock adapter.
-   6. `wrangler pages deploy` publishes the allowlisted site to the
+   7. `wrangler pages deploy` publishes the allowlisted site to the
       `op4n-staging` Cloudflare Pages project (created on first run).
-   7. `tests/staging-smoke.mjs` creates one synthetic link from Origin
+   8. `tests/staging-smoke.mjs` creates one synthetic link from Origin
       `https://staging.op4n.com` (expects `201`, the exact six PublicLinkCard
       fields, a `staging.op4n.me` short URL, and `no-store`) and sends a
       preflight from Origin `https://op4n.com` (expects no allow-origin), then
       confirms `https://staging.op4n.com/config/runtime-config.js` selects
-      the http adapter for this project.
+      the http adapter for this project. It then requests the new code on
+      `https://staging.op4n.me` (GET and HEAD expect `302` to the stored
+      destination with `no-store`) and checks that an unknown code and a
+      malformed path return `404` and `POST` returns `405`, all without
+      `Location`.
 
 Pinned tool versions: Supabase CLI `3.0.0`, wrangler `4.158.0`, run through
 `npx` because the Supabase package installs its binary in a postinstall script
@@ -222,13 +233,20 @@ Deterministic safety and rate-limit modes are accepted only in `local` and
 an unknown environment or any deterministic mode in Production, so the function
 cannot serve requests in that state (`tests/server/runtime-modes.test.mjs`).
 
+**Founder one-time steps for the redirect Worker:** add the GitHub
+Environment secret `INTERNAL_SERVICE_CREDENTIAL` (`openssl rand -hex 32`) and
+a proxied placeholder DNS record `AAAA staging → 100::` in the `op4n.me` zone
+so the Worker route receives traffic.
+
 **Founder one-time step after the first run:** in Cloudflare Pages →
 `op4n-staging` → Custom domains, add `staging.op4n.com`. Until then the Staging
 frontend is reachable only on its `pages.dev` address.
 
 **Staging rollback:** frontend — Cloudflare Pages → `op4n-staging` →
 Deployments → roll back to the previous deployment, or re-dispatch the workflow
-with the previous SHA and digest. Edge Function — re-dispatch the previous SHA.
+with the previous SHA and digest. Edge Function and redirect Worker — re-dispatch the previous SHA, or roll
+back the Worker in Cloudflare → Workers & Pages → `op4n-redirect-staging` →
+Deployments.
 Database — migrations are forward-only; follow Order 5 for any corrective
 migration. Each rollback re-runs the Staging smoke.
 

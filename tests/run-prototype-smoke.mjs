@@ -50,7 +50,7 @@ let browserErrors = "";
 browser.stderr.on("data", (chunk) => { browserErrors += chunk.toString().slice(-4000); });
 
 async function waitForBrowser() {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${debugPort}/json`);

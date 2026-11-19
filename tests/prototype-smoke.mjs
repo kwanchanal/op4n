@@ -394,7 +394,12 @@ const shortDisplay = await evaluate(`(() => {
 assert(shortDisplay.visible.startsWith("op4n.me/") && !shortDisplay.visible.includes("https://"), "short URL is shown as op4n.me/CODE while the full URL stays in text");
 assert(shortDisplay.overflow !== "ellipsis" && shortDisplay.wrap === "anywhere", "short URL wraps instead of truncating");
 assert(cardContract.destinationLabel === "Destination URL :", "card labels the destination separately");
-assert(cardContract.destinationControl === "BUTTON" && cardContract.longDestinationSummary === "https://example.com", "destination summary is limited to the normalized origin");
+assert(cardContract.destinationControl === "A" && cardContract.longDestinationSummary === "https://example.com", "destination summary is limited to the normalized origin");
+const openContract = await evaluate(`[...document.querySelectorAll('.public-link-card .open-destination-btn')].map((item) => ({
+  tag: item.tagName, target: item.target, rel: item.rel, href: item.getAttribute('href')
+}))`);
+assert(openContract.length > 0 && openContract.every((item) => item.tag === "A" && item.target === "_blank" && item.rel.includes("noopener") && item.rel.includes("noreferrer")), "Open is an external new-tab link with noopener noreferrer");
+assert(openContract.every((item) => !item.href.includes("?") && !item.href.includes("#")), "Open links never carry a query string or fragment");
 assert(!cardContract.fullQueryExposed, "public card DOM does not expose destination query parameters");
 assert(cardContract.toolbar && cardContract.visibleClicks, "compact toolbar keeps Clicks visible as a number");
 assert(cardContract.registeredLabels, "all Registered previews announce their locked state");
@@ -601,6 +606,7 @@ assert(String(header(post.headers, "Content-Type")).startsWith("application/json
 assert(JSON.stringify(JSON.parse(post.postData)) === JSON.stringify({ destinationUrl: "https://example.com/http-smoke?token=SECRET#frag", title: "HTTP smoke" }), "http create sends the trimmed destination and title");
 assert(httpCreated.cards === 1 && httpCreated.shortUrl === fakeCard.canonicalShortUrl && httpCreated.title === "HTTP smoke", "card renders the API short URL and title");
 assert(httpCreated.summary === "https://example.com" && httpCreated.clicks === "0 clicks", "card renders the API destination summary and aggregate clicks");
+assert((await evaluate(`document.querySelector('.public-link-card .open-destination-btn')?.getAttribute('href')`)) === fakeCard.canonicalOpenUrl, "http Open navigates through the canonical short URL");
 assert(!httpCreated.leaks, "http mode never renders the destination query or fragment");
 assert(!prototypeWording.test(httpCreated.text), "http mode shows no prototype wording after success");
 

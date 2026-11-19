@@ -39,6 +39,17 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
         p_canonical_base_url: input.canonicalBaseUrl,
       }, { detectCodeCollision: true });
     },
+    async resolveRedirect(canonicalCode) {
+      return callRpc("resolve_canonical_redirect_v1", { p_code: canonicalCode });
+    },
+    async recordClick(input) {
+      return callRpc("record_click_v1", {
+        p_event_id: input.eventId,
+        p_code: input.canonicalCode,
+        p_destination_version: input.destinationVersion,
+        p_occurred_at: input.occurredAt,
+      });
+    },
   });
 
   async function callRpc(name, requestBody, { detectCodeCollision = false } = {}) {
