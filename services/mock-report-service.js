@@ -18,21 +18,20 @@
     if (scenario.type === "error") {
       const error = new Error("Configured prototype report error");
       error.code = scenario.code;
+      error.status = scenario.status;
+      error.requestId = "mock-report-0000";
+      error.retryAfter = scenario.retryAfter ?? null;
       throw error;
     }
 
-    return {
-      report: {
-        requestId: request.requestId,
-        shortUrl: request.shortUrl,
-        simulated: true,
-        delivered: false
-      },
-      meta: { prototype: true, persisted: false }
-    };
+    lastReportRequest = JSON.parse(JSON.stringify(request));
+    return { receiptId: "00000000-0000-4000-8000-000000000010", requestId: "mock-report-0000" };
   }
 
-  window.op4nReportService = Object.freeze({
+  let lastReportRequest = null;
+
+  window.op4nMockReportService = Object.freeze({
+    isPrototype: true,
     submitReport,
     prototypeControls: Object.freeze({
       setScenario(name) {
@@ -42,6 +41,9 @@
       },
       getScenarios() {
         return Object.keys(config.scenarios);
+      },
+      getLastReportRequest() {
+        return lastReportRequest ? JSON.parse(JSON.stringify(lastReportRequest)) : null;
       }
     })
   });

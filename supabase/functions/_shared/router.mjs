@@ -8,6 +8,7 @@ const ROUTES = Object.freeze([
 
 export function routeOperation(pathname) {
   const path = String(pathname || "");
+  if (/\/api\/v1\/links\/[^/]+\/reports$/.test(path)) return "submitPublicLinkReport";
   for (const [suffix, operation] of ROUTES) {
     if (path.endsWith(suffix)) return operation;
   }
