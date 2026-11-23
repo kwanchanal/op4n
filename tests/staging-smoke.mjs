@@ -60,6 +60,11 @@ export function checkNoRedirect(status, headers, expectedStatus) {
   return failures;
 }
 
+export function checkPlatformRejectsSpoof(status, headers) {
+  if (status === 403 && !headers.get("x-request-id")) return [];
+  return [`a client-supplied CF-Connecting-IP reached the function (status ${status})`];
+}
+
 export function checkRateLimited(response) {
   if (!response) return ["8 rapid creates with spoofed client headers were never rate-limited"];
   const failures = [];
@@ -100,6 +105,8 @@ function selfTest() {
     [checkRedirect(302, new Headers({ location: "https://evil.example", "cache-control": "no-store" }), SMOKE_DESTINATION).length === 0, false],
     [checkNoRedirect(404, new Headers({ "cache-control": "no-store" }), 404).length === 0, true],
     [checkRateLimited(null).length === 0, false],
+    [checkPlatformRejectsSpoof(403, new Headers()).length === 0, true],
+    [checkPlatformRejectsSpoof(204, new Headers({ "x-request-id": "abc" })).length === 0, false],
     [checkRateLimited({ headers: new Headers({ "retry-after": "42", "ratelimit-remaining": "0" }) }).length === 0, true],
     [checkRateLimited({ headers: new Headers({ "ratelimit-remaining": "0" }) }).length === 0, false],
     [checkNoRedirect(404, new Headers({ location: "https://x", "cache-control": "no-store" }), 404).length === 0, false],
@@ -160,6 +167,16 @@ async function run() {
   const post = await fetch(`${SHORT_HOST_ORIGIN}/ZZZZZZZZZZ`, { method: "POST", redirect: "manual" });
   failures.push(...checkNoRedirect(post.status, post.headers, 405).map((item) => `POST: ${item}`));
 
+  // The platform edge (Cloudflare in front of Supabase) rejects a
+  // client-supplied CF-Connecting-IP before our function runs, so that header
+  // cannot be spoofed. Observed on Staging 2026-11-23: 403 with no X-Request-ID.
+  const spoofedCf = await fetch(endpoint, {
+    method: "OPTIONS",
+    headers: { Origin: STAGING_ORIGIN, "Access-Control-Request-Method": "POST", "CF-Connecting-IP": "203.0.113.250" },
+  });
+  await spoofedCf.body?.cancel();
+  failures.push(...checkPlatformRejectsSpoof(spoofedCf.status, spoofedCf.headers));
+
   // Rate limit: the real Postgres limiter allows 5 creates per minute per
   // client. Spoofed forwarding headers must not create fresh identities, so a
   // burst from this runner is limited no matter what the headers claim.
@@ -174,7 +191,6 @@ async function run() {
         Origin: STAGING_ORIGIN,
         "X-Forwarded-For": `203.0.113.${attempt + 10}`,
         "X-Real-IP": `203.0.113.${attempt + 10}`,
-        "CF-Connecting-IP": `203.0.113.${attempt + 10}`,
       },
       body: JSON.stringify({ destinationUrl: `${SMOKE_DESTINATION}/burst-${attempt}`, title: "Rate-limit smoke" }),
     });
