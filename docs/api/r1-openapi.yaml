@@ -815,7 +815,8 @@ components:
       properties:
         reasonCategory:
           type: string
-          enum: [abuse, phishing, malware, spam, other]
+          enum: [phishing, malware, child_safety, illegal, impersonation, abuse, spam, other]
+          description: Categories and severities are defined in docs/operations/r1-moderation-policy.md.
         detail:
           type: [string, 'null']
           maxLength: 1000

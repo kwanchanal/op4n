@@ -60,6 +60,13 @@ export function checkNoRedirect(status, headers, expectedStatus) {
   return failures;
 }
 
+export function checkReportReceipt(status, body) {
+  if (status !== 202) return [`report returned ${status}, expected 202`];
+  const keys = Object.keys(body ?? {}).sort().join(",");
+  if (keys !== "accepted,receiptId" || body.accepted !== true) return ["report receipt is not exactly {accepted, receiptId}"];
+  return [];
+}
+
 export function checkPlatformRejectsSpoof(status, headers) {
   if (status === 403 && !headers.get("x-request-id")) return [];
   return [`a client-supplied CF-Connecting-IP reached the function (status ${status})`];
@@ -106,6 +113,9 @@ function selfTest() {
     [checkNoRedirect(404, new Headers({ "cache-control": "no-store" }), 404).length === 0, true],
     [checkRateLimited(null).length === 0, false],
     [checkPlatformRejectsSpoof(403, new Headers()).length === 0, true],
+    [checkReportReceipt(202, { accepted: true, receiptId: "x" }).length === 0, true],
+    [checkReportReceipt(202, { accepted: true, receiptId: "x", workflowState: "new" }).length === 0, false],
+    [checkReportReceipt(404, null).length === 0, false],
     [checkPlatformRejectsSpoof(204, new Headers({ "x-request-id": "abc" })).length === 0, false],
     [checkRateLimited({ headers: new Headers({ "retry-after": "42", "ratelimit-remaining": "0" }) }).length === 0, true],
     [checkRateLimited({ headers: new Headers({ "ratelimit-remaining": "0" }) }).length === 0, false],
@@ -151,6 +161,24 @@ async function run() {
     },
   });
   failures.push(...checkForeignPreflight(foreign.status, foreign.headers));
+
+  // Reports: an eligible link accepts a report with an opaque receipt; an
+  // unknown code is 404. Reports never change the redirect.
+  if (typeof body?.canonicalCode === "string") {
+    const reported = await fetch(`${endpoint}/${body.canonicalCode}/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Origin: STAGING_ORIGIN },
+      body: JSON.stringify({ reasonCategory: "other", detail: "Staging deploy smoke report" }),
+    });
+    failures.push(...checkReportReceipt(reported.status, await reported.json().catch(() => null)));
+  }
+  const unknownReport = await fetch(`${endpoint}/ZZZZZZZZZZ/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Origin: STAGING_ORIGIN },
+    body: JSON.stringify({ reasonCategory: "spam" }),
+  });
+  await unknownReport.body?.cancel();
+  if (unknownReport.status !== 404) failures.push(`report for an unknown code returned ${unknownReport.status}`);
 
   // The Worker on staging.op4n.me must redirect the new code and refuse others.
   const code = body?.canonicalCode;

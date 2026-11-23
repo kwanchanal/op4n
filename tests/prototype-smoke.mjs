@@ -62,7 +62,7 @@ const httpRuntimeConfig = {
   apiBaseUrl: fakeApiBase,
   shortLinkHost: "staging.op4n.me",
 };
-const fakeApi = { requests: [], nextStatus: 201 };
+const fakeApi = { requests: [], reports: [], nextStatus: 201 };
 const fakeCard = {
   aggregateTotalClicks: 0,
   canonicalCode: "HTTPCODE",
@@ -90,6 +90,10 @@ async function handlePausedRequest({ requestId, request }) {
   if (url.pathname.endsWith("/config/runtime-config.js")) {
     return fulfill(requestId, 200, "text/javascript",
       `window.OP4N_RUNTIME_CONFIG = Object.freeze(${JSON.stringify(httpRuntimeConfig)});`);
+  }
+  if (url.pathname.startsWith("/__fake-api/") && url.pathname.endsWith("/reports")) {
+    fakeApi.reports.push({ url: request.url, headers: request.headers, postData: request.postData });
+    return fulfill(requestId, 202, "application/json", JSON.stringify({ accepted: true, receiptId: "abcdef12-3456-4789-8abc-def012345678" }));
   }
   if (url.pathname.startsWith("/__fake-api/")) {
     fakeApi.requests.push({ url: request.url, method: request.method, headers: request.headers, postData: request.postData });
@@ -461,24 +465,66 @@ await evaluate(`document.querySelector('.click-count-btn').click()`);
 assert((await evaluate(`document.querySelector('.card-live-status').textContent`)).includes("public link has"), "Clicks action announces aggregate clicks");
 
 const reportFlow = await evaluate(`(async () => {
-  const trigger = document.querySelector('.report-link-btn');
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const trigger = document.querySelector('.public-link-card .report-link-btn');
+  const triggerLabel = trigger.getAttribute('aria-label');
+  const expectedCode = trigger.closest('.public-link-card').querySelector('.link-short-url').textContent.trim().split('/').pop();
   trigger.click();
   const dialog = document.querySelector('#reportDialog');
-  const focusedOnReason = document.activeElement === document.querySelector('#reportReason');
+  const focusedOnCategory = document.activeElement === document.querySelector('#reportCategory');
+  const options = [...document.querySelectorAll('#reportCategory option')].map((item) => item.value).filter(Boolean);
   document.querySelector('#reportForm').requestSubmit();
-  const requiredError = document.querySelector('#reportReasonError').textContent;
-  document.querySelector('#reportReason').value = 'Smoke-test reason';
-  document.querySelector('#reportReason').dispatchEvent(new Event('input', { bubbles: true }));
+  const requiredError = document.querySelector('#reportCategoryError').textContent;
+  const noRequest = window.op4nReportService.prototypeControls.getLastReportRequest() === null;
+  const detail = document.querySelector('#reportReason');
+  const maxLength = detail.maxLength;
+  detail.value = 'Smoke-test detail';
+  detail.dispatchEvent(new Event('input', { bubbles: true }));
+  const counter = document.querySelector('#reportReasonCount').textContent;
+  document.querySelector('#reportCategory').value = 'phishing';
+  document.querySelector('#reportCategory').dispatchEvent(new Event('change', { bubbles: true }));
+
+  window.op4nReportService.prototypeControls.setScenario('network');
   document.querySelector('#reportForm').requestSubmit();
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await sleep(300);
+  const errorStatus = document.querySelector('#reportStatus').textContent;
+  const keptCategory = document.querySelector('#reportCategory').value;
+  const keptDetail = detail.value;
+  const firstKey = window.op4nReportService.prototypeControls.getLastReportRequest();
+
+  window.op4nReportService.prototypeControls.setScenario('success');
+  document.querySelector('#reportForm').requestSubmit();
+  await sleep(300);
+  const sent = window.op4nReportService.prototypeControls.getLastReportRequest();
   const status = document.querySelector('#reportStatus').textContent;
   document.querySelector('#reportDialogClose').click();
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  return { focusedOnReason, requiredError, status, returned: document.activeElement === trigger, closed: !dialog.open };
+  await sleep(50);
+
+  trigger.click();
+  window.op4nReportService.prototypeControls.setScenario('rate-limit');
+  document.querySelector('#reportCategory').value = 'spam';
+  document.querySelector('#reportForm').requestSubmit();
+  await sleep(300);
+  const rateStatus = document.querySelector('#reportStatus').textContent;
+  window.op4nReportService.prototypeControls.setScenario('success');
+  document.querySelector('#reportDialogClose').click();
+  await sleep(50);
+  return {
+    triggerLabel, expectedCode, focusedOnCategory, options, requiredError, noRequest, maxLength, counter,
+    errorStatus, keptCategory, keptDetail, firstKey, sent, status, rateStatus,
+    returned: document.activeElement === trigger, closed: !dialog.open
+  };
 })()`);
-assert(reportFlow.focusedOnReason, "Report dialog focuses the reason field");
-assert(reportFlow.requiredError.includes("Enter a reason"), "Report requires a reason");
-assert(reportFlow.status.includes("simulated") && reportFlow.status.includes("No Admin"), "Report success is explicitly simulated and undelivered");
+assert(reportFlow.triggerLabel.startsWith("Report "), "every public card has a named Report control");
+assert(reportFlow.focusedOnCategory, "Report dialog focuses the category field");
+assert(JSON.stringify(reportFlow.options) === JSON.stringify(["phishing", "malware", "child_safety", "illegal", "impersonation", "abuse", "spam", "other"]), "Report categories match the moderation policy");
+assert(reportFlow.requiredError.includes("Choose a reason") && reportFlow.noRequest, "Report requires a category and sends nothing without one");
+assert(reportFlow.maxLength === 1000 && reportFlow.counter === "17 / 1000", "Report detail is capped at 1000 with a live counter");
+assert(reportFlow.firstKey === null && reportFlow.errorStatus.includes("still here") && reportFlow.keptCategory === "phishing" && reportFlow.keptDetail === "Smoke-test detail", "Report errors keep the answers");
+assert(reportFlow.sent?.reasonCategory === "phishing" && reportFlow.sent.detail === "Smoke-test detail" && reportFlow.sent.canonicalCode === reportFlow.expectedCode, "Report sends the category, detail, and card code");
+assert(/^[0-9a-f-]{36}$/.test(reportFlow.sent?.requestId || ""), "Report uses a UUID Idempotency-Key");
+assert(reportFlow.status.includes("simulated") && reportFlow.status.includes("No Admin"), "mock Report success is explicitly simulated and undelivered");
+assert(reportFlow.rateStatus.includes("several reports recently"), "Report rate limit is explained");
 assert(reportFlow.returned && reportFlow.closed, "Report closes and restores focus");
 
 await evaluate(`document.querySelector('[data-feature="qr"]').focus()`);
@@ -649,6 +695,22 @@ const httpError = await evaluate(`({
 assert(httpError.state === "error" && httpError.value === "https://example.com/http-error" && httpError.cards === 1, "http service error preserves input and creates no card");
 assert(httpError.retry && !prototypeWording.test(httpError.text), "http service error offers retry without prototype wording");
 assert(httpError.text.includes("temporarily unavailable") && httpError.text.includes("(Ref smoke-re)"), "http 503 shows the approved message and X-Request-ID reference");
+const httpReport = await evaluate(`(async () => {
+  document.querySelector('.public-link-card .report-link-btn').click();
+  document.querySelector('#reportCategory').value = 'malware';
+  document.querySelector('#reportReason').value = 'Download prompts';
+  document.querySelector('#reportForm').requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const status = document.querySelector('#reportStatus').textContent;
+  const description = document.querySelector('#reportDialogDescription').textContent;
+  document.querySelector('#reportDialogClose').click();
+  return { status, description, prototype: window.op4nReportService.isPrototype };
+})()`);
+const sentReport = fakeApi.reports[0];
+assert(httpReport.prototype === false && fakeApi.reports.length === 1 && sentReport.url === `${fakeApiBase}/api/v1/links/HTTPCODE/reports`, "http Report posts once to the card's report endpoint");
+assert(JSON.stringify(JSON.parse(sentReport.postData)) === JSON.stringify({ reasonCategory: "malware", detail: "Download prompts" }), "http Report sends only the category and detail");
+assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4/.test(header(sentReport.headers, "Idempotency-Key") || ""), "http Report sends a UUID Idempotency-Key");
+assert(httpReport.status.includes("we received your report (Ref abcdef12)") && !/simulated|prototype/i.test(httpReport.status + httpReport.description), "http Report confirms receipt without prototype wording");
 await send("Fetch.disable");
 
 assert(exceptions.length === 0, "zero uncaught JavaScript exceptions");

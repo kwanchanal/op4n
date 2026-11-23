@@ -47,6 +47,16 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
         p_windows: input.windows,
       });
     },
+    async submitReport(input) {
+      return callRpc("submit_report_v1", {
+        p_environment: input.environment,
+        p_code: input.canonicalCode,
+        p_key_hash: input.keyHash,
+        p_payload_digest: input.payloadDigest,
+        p_reason: input.reasonCategory,
+        p_detail: input.detail,
+      });
+    },
     async getFeatureFlags() {
       return callRpc("get_feature_flags_v1", {});
     },

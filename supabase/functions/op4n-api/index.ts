@@ -7,6 +7,7 @@ import { createDestinationPolicy } from "../_shared/destination-policy.mjs";
 import { createFeatureFlagReader } from "../_shared/feature-flags.mjs";
 import { createPostgresRateLimitGate, resolveRateLimits } from "../_shared/rate-limit.mjs";
 import { createClickHandler, createRedirectLookupHandler } from "../_shared/internal-handlers.mjs";
+import { createReportHandler } from "../_shared/report-handler.mjs";
 import { routeOperation } from "../_shared/router.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
 import { resolveRuntimeModes } from "../_shared/runtime-modes.mjs";
@@ -67,14 +68,18 @@ function selectRateLimitGate() {
   return runtimeModes.rateLimit === "deterministic" ? deterministicLocalRateLimitGate() : null;
 }
 
+const allowedOrigins = localMode
+  ? ["http://127.0.0.1:5500"]
+  : environment === "production"
+    ? ["https://op4n.com"]
+    : ["https://staging.op4n.com", "http://127.0.0.1:5500"];
+const rateLimitGate = selectRateLimitGate();
+const featureFlags = createFeatureFlagReader({ persistence });
+
 const createHandler = createLinkHandler({
   environment,
   canonicalBaseUrl: environment === "production" ? "https://op4n.me" : "https://staging.op4n.me",
-  allowedOrigins: localMode
-    ? ["http://127.0.0.1:5500"]
-    : environment === "production"
-      ? ["https://op4n.com"]
-      : ["https://staging.op4n.com", "http://127.0.0.1:5500"],
+  allowedOrigins,
   destinationPolicy: createDestinationPolicy({
     shortLinkHosts: ["op4n.me", "staging.op4n.me"],
   }),
@@ -86,8 +91,8 @@ const createHandler = createLinkHandler({
       return configuredSafetyPort.decide(input);
     },
   },
-  rateLimitGate: selectRateLimitGate(),
-  featureFlags: createFeatureFlagReader({ persistence }),
+  rateLimitGate,
+  featureFlags,
   persistence,
   generateCanonicalCode: () => localCodeSequence.shift() || defaultCodeGenerator(),
   destinationHmacKey: hmacBytes,
@@ -98,6 +103,13 @@ const handlers = {
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
   recordRedirectClick: createClickHandler({ credential: internalCredential, persistence }),
+  submitPublicLinkReport: createReportHandler({
+    environment,
+    allowedOrigins,
+    persistence,
+    rateLimitGate,
+    featureFlags,
+  }),
 };
 
 Deno.serve(async (request) => {

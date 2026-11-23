@@ -20,9 +20,10 @@ async function database() {
   for (const [name, job] of [
     ["202611190001_redirect_lookup_and_clicks.sql", "op4n_purge_expired_click_events"],
     ["202611200001_rate_limits_and_feature_flags.sql", "op4n_purge_rate_limit_counters"],
+    ["202611230001_reports_and_moderation.sql", null],
   ]) {
     const sql = await migration(name);
-    assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
+    if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
     // pg_cron is not available in PGlite; only the scheduling block is skipped.
     await db.exec(sql.replace(/create extension if not exists pg_cron[\s\S]*?(?=commit;)/, ""));
   }
@@ -226,6 +227,70 @@ test("browser roles cannot use the rate-limit or feature-flag functions", async 
     `select grantee from information_schema.role_routine_grants
      where routine_name in ('consume_rate_limit_v1', 'purge_rate_limit_counters_v1', 'get_feature_flags_v1')
        and grantee in ('anon', 'authenticated', 'PUBLIC')`,
+  )).rows;
+  assert.deepEqual(grants, []);
+});
+
+const report = (db, key, reason = "phishing", detail = "Looks like a fake login", code = CODE, digest = "d".repeat(64)) => value(
+  db,
+  "select public.submit_report_v1('staging', $1, $2, $3, $4, $5)",
+  [code, key.repeat(64).slice(0, 64), digest, reason, detail],
+);
+
+test("reports persist with a receipt, replay idempotently, and reject conflicts", async () => {
+  const db = await database();
+  await createLink(db);
+  const first = await report(db, "1");
+  assert.equal(first.kind, "accepted");
+  assert.match(first.receiptId, /^[0-9a-f-]{36}$/);
+  const replay = await report(db, "1");
+  assert.deepEqual(replay, { kind: "replayed", receiptId: first.receiptId });
+  assert.equal((await report(db, "1", "spam", null, CODE, "e".repeat(64))).kind, "conflict");
+  assert.equal(Number(await value(db, "select count(*) from public.reports")), 1);
+  const stored = (await db.query("select reason_code, report_detail, workflow_state from public.reports")).rows[0];
+  assert.deepEqual(stored, { reason_code: "phishing", report_detail: "Looks like a fake login", workflow_state: "new" });
+});
+
+test("reports open one case per link at the most severe priority and never touch the redirect", async () => {
+  const db = await database();
+  await createLink(db);
+  await report(db, "1", "spam");
+  assert.equal(await value(db, "select priority from public.moderation_cases"), "S3");
+  await report(db, "2", "impersonation");
+  assert.equal(await value(db, "select priority from public.moderation_cases"), "S2");
+  await report(db, "3", "malware");
+  await report(db, "4", "other");
+  assert.equal(Number(await value(db, "select count(*) from public.moderation_cases")), 1);
+  assert.equal(await value(db, "select priority from public.moderation_cases"), "S1");
+  assert.equal((await resolve(db, CODE)).decision, "redirect", "a report never disables the redirect");
+});
+
+test("reports for unknown or inactive links are unavailable and invalid input is rejected", async () => {
+  const db = await database();
+  await createLink(db);
+  assert.equal((await report(db, "5", "spam", null, "ZZZZZZZZZZ")).kind, "unavailable");
+  assert.equal((await report(db, "6", "spam", null, "../etc")).kind, "unavailable");
+  await assert.rejects(report(db, "7", "not_a_category"));
+  await assert.rejects(report(db, "8", "spam", "x".repeat(1001)));
+  await db.exec("update public.canonical_links set lifecycle_state = 'disabled', disabled_at = now()");
+  assert.equal((await report(db, "9", "spam")).kind, "unavailable");
+  const columns = (await db.query("select column_name from information_schema.columns where table_name = 'reports'")).rows.map((row) => row.column_name);
+  for (const forbidden of ["ip", "ip_address", "client_ip", "user_agent", "device", "reporter_email", "account_id"]) {
+    assert.ok(!columns.includes(forbidden), `reports must not have ${forbidden}`);
+  }
+});
+
+test("moderation actions are append-only and state changes require a reason", async () => {
+  const db = await database();
+  await createLink(db);
+  const linkId = await value(db, "select id from public.canonical_links");
+  await assert.rejects(db.query("insert into public.moderation_actions (link_id, actor_principal_id, action_type) values ($1, 'founder', 'disable')", [linkId]));
+  await db.query("insert into public.moderation_actions (link_id, actor_principal_id, action_type, reason_code) values ($1, 'founder', 'disable', 'abuse_report')", [linkId]);
+  await assert.rejects(db.exec("update public.moderation_actions set reason_code = 'safety_block'"));
+  await assert.rejects(db.exec("delete from public.moderation_actions"));
+  const grants = (await db.query(
+    `select grantee from information_schema.role_routine_grants
+     where routine_name in ('submit_report_v1', 'report_severity') and grantee in ('anon', 'authenticated', 'PUBLIC')`,
   )).rows;
   assert.deepEqual(grants, []);
 });

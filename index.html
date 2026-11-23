@@ -191,11 +191,27 @@
         Guest action
       </p>
       <h2 id="reportDialogTitle">Report this link</h2>
-      <p id="reportDialogDescription">Tell us why this public link should be reviewed. Submission is simulated during Prototype Cleanup.</p>
+      <p id="reportDialogDescription">Tell us why this public link should be reviewed. We read every report.</p>
       <form class="report-form" id="reportForm" novalidate>
         <div class="field">
-          <label for="reportReason">Reason</label>
-          <textarea id="reportReason" name="reason" rows="4" required aria-describedby="reportReasonError" placeholder="Describe the issue"></textarea>
+          <label for="reportCategory">What's wrong?</label>
+          <select id="reportCategory" name="reasonCategory" required aria-describedby="reportCategoryError">
+            <option value="">Choose a reason</option>
+            <option value="phishing">Phishing or fake login</option>
+            <option value="malware">Malware or harmful download</option>
+            <option value="child_safety">Child sexual abuse or exploitation</option>
+            <option value="illegal">Illegal content</option>
+            <option value="impersonation">Impersonation or trademark misuse</option>
+            <option value="abuse">Harassment, hate, or scam</option>
+            <option value="spam">Spam</option>
+            <option value="other">Something else</option>
+          </select>
+          <p class="field-error" id="reportCategoryError" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label for="reportReason">Details (optional)</label>
+          <textarea id="reportReason" name="detail" rows="4" maxlength="1000" aria-describedby="reportReasonCount reportReasonError" placeholder="Anything that helps us review this link"></textarea>
+          <p class="field-hint report-count" id="reportReasonCount" aria-live="off">0 / 1000</p>
           <p class="field-error" id="reportReasonError" aria-live="polite"></p>
         </div>
         <p class="report-status" id="reportStatus" role="status" aria-live="polite"></p>
@@ -208,15 +224,17 @@
 
     <script src="config/runtime-config.js?v=r1-order21"></script>
     <script src="data/mock-api-config.js?v=r1-batch-c"></script>
-    <script src="data/mock-report-config.js?v=id25"></script>
+    <script src="data/mock-report-config.js?v=r1-batch-d"></script>
     <script src="data/qr-showcase-config.js?v=id25"></script>
     <script src="services/prototype-storage.js?v=id25"></script>
     <script src="services/destination-url-validation.js?v=r1-batch-c"></script>
     <script src="services/http-link-service.js?v=r1-batch-a"></script>
     <script src="services/mock-link-service.js?v=r1-batch-c"></script>
     <script src="services/link-service.js?v=r1-order21"></script>
-    <script src="services/mock-report-service.js?v=id25"></script>
+    <script src="services/mock-report-service.js?v=r1-batch-d"></script>
+    <script src="services/http-report-service.js?v=r1-batch-d"></script>
+    <script src="services/report-service.js?v=r1-batch-d"></script>
     <script src="shared-sidebar.js?v=id25"></script>
-    <script src="app.js?v=r1-batch-c"></script>
+    <script src="app.js?v=r1-batch-d"></script>
   </body>
 </html>

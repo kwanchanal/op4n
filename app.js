@@ -63,7 +63,7 @@
     activeReportTrigger: null,
     activeReportLink: null,
     reportInFlight: false,
-    reportRequestNumber: 0,
+    reportRequest: null,
   };
 
   const elements = {
@@ -96,6 +96,9 @@
     reportDialogClose: document.getElementById("reportDialogClose"),
     reportCancel: document.getElementById("reportCancel"),
     reportForm: document.getElementById("reportForm"),
+    reportCategory: document.getElementById("reportCategory"),
+    reportCategoryError: document.getElementById("reportCategoryError"),
+    reportReasonCount: document.getElementById("reportReasonCount"),
     reportReason: document.getElementById("reportReason"),
     reportReasonError: document.getElementById("reportReasonError"),
     reportStatus: document.getElementById("reportStatus"),
@@ -559,17 +562,40 @@
     elements.reportStatus.dataset.status = status;
   }
 
+  function updateReportCount() {
+    elements.reportReasonCount.textContent = `${elements.reportReason.value.length} / 1000`;
+  }
+
   function openReportDialog(link, trigger) {
     state.activeReportTrigger = trigger;
     state.activeReportLink = link;
+    state.reportRequest = null;
     elements.reportForm.reset();
+    elements.reportCategoryError.textContent = "";
+    elements.reportCategory.setAttribute("aria-invalid", "false");
     elements.reportReasonError.textContent = "";
     elements.reportReason.setAttribute("aria-invalid", "false");
     elements.reportSubmit.disabled = false;
     elements.reportSubmit.textContent = "Submit report";
+    updateReportCount();
     setReportStatus();
     elements.reportDialog.showModal();
-    elements.reportReason.focus();
+    elements.reportCategory.focus();
+  }
+
+  function getReportErrorMessage(error) {
+    switch (error?.code) {
+      case "RATE_LIMITED":
+        return "You've sent several reports recently. Please try again later.";
+      case "LINK_NOT_FOUND":
+        return "This link can no longer be reported.";
+      case "FEATURE_UNAVAILABLE":
+        return "Reporting is temporarily paused. Please try again later.";
+      case "VALIDATION_ERROR":
+        return "Check the reason and try again.";
+      default:
+        return withSupportReference("We couldn't send your report. Your answers are still here; please try again.", error);
+    }
   }
 
   function closeReportDialog() {
@@ -581,46 +607,53 @@
     event.preventDefault();
     if (state.reportInFlight || !state.activeReportLink) return;
 
-    const reason = elements.reportReason.value.trim();
-    if (!reason) {
-      elements.reportReasonError.textContent = "Enter a reason before submitting.";
-      elements.reportReason.setAttribute("aria-invalid", "true");
+    const reasonCategory = elements.reportCategory.value;
+    const detail = elements.reportReason.value.trim();
+    elements.reportCategoryError.textContent = reasonCategory ? "" : "Choose a reason before submitting.";
+    elements.reportCategory.setAttribute("aria-invalid", String(!reasonCategory));
+    elements.reportReasonError.textContent = detail.length > 1000 ? "Use 1,000 characters or fewer." : "";
+    elements.reportReason.setAttribute("aria-invalid", String(detail.length > 1000));
+    if (!reasonCategory) {
+      elements.reportCategory.focus();
+      return;
+    }
+    if (detail.length > 1000) {
       elements.reportReason.focus();
       return;
     }
 
-    elements.reportReasonError.textContent = "";
-    elements.reportReason.setAttribute("aria-invalid", "false");
+    // One report intent, one Idempotency-Key: retrying the same answers reuses it.
+    const previous = state.reportRequest;
+    const canonicalCode = state.activeReportLink.code;
+    const sameIntent = previous && previous.canonicalCode === canonicalCode &&
+      previous.reasonCategory === reasonCategory && previous.detail === detail;
+    state.reportRequest = {
+      requestId: sameIntent ? previous.requestId : newRequestId(),
+      canonicalCode,
+      reasonCategory,
+      detail,
+    };
+
+    const prototype = Boolean(window.op4nReportService?.isPrototype);
     state.reportInFlight = true;
-    state.reportRequestNumber += 1;
     elements.reportDialog.setAttribute("aria-busy", "true");
     elements.reportSubmit.disabled = true;
     elements.reportSubmit.textContent = "Submitting…";
-    setReportStatus("Simulating report submission…", "submitting");
+    setReportStatus(prototype ? "Simulating report submission…" : "Sending your report…", "submitting");
     let completed = false;
 
     try {
-      await window.op4nReportService.submitReport({
-        requestId: `prototype-report-${state.reportRequestNumber}`,
-        shortUrl: getShortLink(state.activeReportLink),
-        reason,
-      });
+      const receipt = await window.op4nReportService.submitReport(state.reportRequest);
       setReportStatus(
-        "Report simulated in this prototype only. No Admin or production server received it.",
+        prototype
+          ? "Report simulated in this prototype only. No Admin or production server received it."
+          : `Thanks — we received your report (Ref ${String(receipt.receiptId).slice(0, 8)}). Questions? support@op4n.com`,
         "success"
       );
       completed = true;
-      elements.reportSubmit.textContent = "Simulated";
+      elements.reportSubmit.textContent = prototype ? "Simulated" : "Sent";
     } catch (error) {
-      const messages = {
-        MOCK_REPORT_VALIDATION: "Check the reason and try again.",
-        MOCK_REPORT_NETWORK: "The prototype is offline. Your reason is preserved; retry when ready.",
-        MOCK_REPORT_SERVER: "The prototype report service is unavailable. Your reason is preserved; retry when ready.",
-      };
-      setReportStatus(
-        messages[error?.code] || "The simulated report could not be submitted. Your reason is preserved.",
-        "error"
-      );
+      setReportStatus(getReportErrorMessage(error), "error");
       elements.reportSubmit.textContent = "Retry report";
     } finally {
       state.reportInFlight = false;
@@ -983,8 +1016,15 @@
     elements.reportDialogClose.addEventListener("click", closeReportDialog);
     elements.reportCancel.addEventListener("click", closeReportDialog);
     elements.reportForm.addEventListener("submit", handleReportSubmit);
+    elements.reportCategory.addEventListener("change", () => {
+      if (elements.reportCategory.value) {
+        elements.reportCategoryError.textContent = "";
+        elements.reportCategory.setAttribute("aria-invalid", "false");
+      }
+    });
     elements.reportReason.addEventListener("input", () => {
-      if (elements.reportReason.value.trim()) {
+      updateReportCount();
+      if (elements.reportReason.value.length <= 1000) {
         elements.reportReasonError.textContent = "";
         elements.reportReason.setAttribute("aria-invalid", "false");
       }

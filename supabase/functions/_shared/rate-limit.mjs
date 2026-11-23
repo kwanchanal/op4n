@@ -15,6 +15,13 @@ export const DEFAULT_RATE_LIMITS = Object.freeze({
     ]),
     global: Object.freeze([Object.freeze({ seconds: 86400, limit: 2000 })]),
   }),
+  "public-report": Object.freeze({
+    identity: Object.freeze([
+      Object.freeze({ seconds: 3600, limit: 5 }),
+      Object.freeze({ seconds: 86400, limit: 20 }),
+    ]),
+    global: Object.freeze([Object.freeze({ seconds: 86400, limit: 1000 })]),
+  }),
 });
 
 function validWindows(windows) {
