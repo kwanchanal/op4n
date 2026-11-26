@@ -9,13 +9,13 @@ Repository remote: `https://github.com/kwanchanal/op4n`
 
 The current product source of truth is the Notion Product Plan:
 
-`https://app.notion.com/p/Product-Plan-3f6927fb12d48117b80dd65e6e959d40`
+`https://app.notion.com/p/98f1cc9a1f4282f488548191d1c2990c`
 
 If this repository, an older brief, or prototype copy conflicts with that plan,
 pause and resolve the product decision before shipping. The implementation
 backlog is the Notion Feature Inventory:
 
-`https://app.notion.com/p/3f6927fb12d480e6b49fdb465fde8a0f?v=3f6927fb12d480939944000c9de7f86a`
+`https://app.notion.com/p/7481cc9a1f42834fa52881216697b543?v=a9f1cc9a1f428266a1e988468944f105`
 
 A card appearing in Feature Inventory is context, not authorization to implement
 the entire board. Work only on the explicitly assigned card or approved ordered
