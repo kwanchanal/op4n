@@ -147,7 +147,7 @@ export function createAdminGate({
       });
       if (origin && allowedOrigins.includes(origin)) {
         headers.set("Access-Control-Allow-Origin", origin);
-        headers.set("Access-Control-Expose-Headers", "X-Request-ID");
+        headers.set("Access-Control-Expose-Headers", "X-Request-ID, Idempotency-Replayed, Retry-After");
       }
       const respond = (status, body) => new Response(body === null ? null : JSON.stringify(body), { status, headers });
       const fail = (status, code) => {
@@ -194,8 +194,10 @@ export function createAdminGate({
       // The actor is a logical label; the subject identifier is protected
       // configuration and is never logged.
       const result = await handler({ request, claims: verdict.claims, requestId: id });
-      log({ event: "admin_request", operation, requestId: id, actor: "founder", status: result.status });
-      return respond(result.status, result.body);
+      for (const [name, value] of Object.entries(result.headers ?? {})) headers.set(name, value);
+      const body = result.body?.error ? { error: { ...result.body.error, requestId: id } } : result.body;
+      log({ event: "admin_request", operation, requestId: id, actor: "founder", status: result.status, code: result.body?.error?.code });
+      return respond(result.status, body);
     };
   };
 }

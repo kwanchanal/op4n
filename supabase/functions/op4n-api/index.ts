@@ -1,4 +1,5 @@
 import { adminSessionHandler, createAdminGate, createJwksKeyStore } from "../_shared/admin-auth.mjs";
+import { createAdminHandlers } from "../_shared/admin-handlers.mjs";
 import { createCanonicalCodeGenerator } from "../_shared/canonical-code.mjs";
 import {
   createLinkHandler,
@@ -125,6 +126,14 @@ const adminRoute = createAdminGate({
   allowedOrigins,
 });
 
+const admin = createAdminHandlers({
+  persistence,
+  destinationPolicy: createDestinationPolicy({ shortLinkHosts: ["op4n.me", "staging.op4n.me"] }),
+  destinationHmacKey: hmacBytes,
+  shortHosts: environment === "production" ? ["op4n.me"] : ["staging.op4n.me"],
+  environment,
+});
+
 const handlers = {
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
@@ -132,6 +141,13 @@ const handlers = {
   claimFounderNotifications: createNotificationClaimHandler({ credential: internalCredential, persistence, environment }),
   completeFounderNotifications: createNotificationCompleteHandler({ credential: internalCredential, persistence }),
   getAdminSession: adminRoute("getAdminSession", adminSessionHandler({ environment })),
+  findAdminLink: adminRoute("findAdminLink", admin.findLink, { methods: ["POST"] }),
+  getAdminLinkRecord: adminRoute("getAdminLinkRecord", admin.getRecord),
+  revealAdminDestination: adminRoute("revealAdminDestination", admin.revealDestination, { methods: ["POST"] }),
+  listAdminCases: adminRoute("listAdminCases", admin.listCases),
+  transitionAdminCase: adminRoute("transitionAdminCase", admin.transitionCase, { methods: ["POST"] }),
+  disableCanonicalLink: adminRoute("disableCanonicalLink", admin.moderate("disable"), { methods: ["POST"], requireRecentAuth: true }),
+  restoreCanonicalLink: adminRoute("restoreCanonicalLink", admin.moderate("restore"), { methods: ["POST"], requireRecentAuth: true }),
   submitPublicLinkReport: createReportHandler({
     environment,
     allowedOrigins,

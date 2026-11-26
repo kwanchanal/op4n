@@ -54,7 +54,8 @@ test("router maps only approved paths", () => {
   assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/links"), "createGuestCanonicalLink");
   assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/internal/redirect-lookup"), "resolveCanonicalRedirect");
   assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/internal/clicks"), "recordRedirectClick");
-  assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/admin/links/x"), null);
+  assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/admin/unknown"), null);
+  assert.equal(routeOperation("/functions/v1/op4n-api/api/v1/admin/links/x/delete"), null);
   assert.equal(routeOperation(""), null);
 });
 

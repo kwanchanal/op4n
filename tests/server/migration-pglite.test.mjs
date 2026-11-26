@@ -22,6 +22,7 @@ async function database() {
     ["202611200001_rate_limits_and_feature_flags.sql", "op4n_purge_rate_limit_counters"],
     ["202611230001_reports_and_moderation.sql", null],
     ["202611260001_notification_outbox.sql", "op4n_purge_sent_notifications"],
+    ["202611260002_admin_moderation.sql", null],
   ]) {
     const sql = await migration(name);
     if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
@@ -365,4 +366,80 @@ test("safety blocks enqueue an S1 entry and browser roles cannot touch the outbo
        and grantee in ('anon', 'authenticated', 'PUBLIC')`,
   )).rows;
   assert.deepEqual(grants, []);
+});
+
+const moderate = (db, action, key, reason = "abuse_report", digest = "a".repeat(64)) => value(
+  db,
+  "select public.admin_moderate_link_v1($1, $2, 'founder-subject', $3, 'note', $4, $5)",
+  [CODE, action, reason, key.repeat(64).slice(0, 64), digest],
+);
+
+test("admin lookup finds by code or exact fingerprint and hides the full destination until revealed", async () => {
+  const db = await database();
+  await createLink(db);
+  await report(db, "1", "phishing");
+  assert.equal(await value(db, "select public.admin_find_link_v1($1, null)", [CODE]), CODE);
+  assert.equal(await value(db, "select public.admin_find_link_v1(null, $1)", ["f".repeat(64)]), CODE);
+  assert.equal(await value(db, "select public.admin_find_link_v1(null, $1)", ["e".repeat(64)]), null);
+  assert.equal(await value(db, "select public.admin_find_link_v1($1, null)", ["Abc123"]), null, "no partial match");
+  const record = await value(db, "select public.admin_link_record_v1($1)", [CODE]);
+  assert.equal(record.canonicalCode, CODE);
+  assert.equal(record.safeDestinationOrigin, "https://example.com");
+  assert.equal(record.reportCount, 1);
+  assert.deepEqual(record.reportsByReason, { phishing: 1 });
+  assert.equal(record.openCase.priority, "S1");
+  assert.ok(!JSON.stringify(record).includes("p?q=1"), "record excludes the full destination");
+  const revealed = await value(db, "select public.admin_reveal_destination_v1($1, 'founder-subject')", [CODE]);
+  assert.deepEqual(revealed, { kind: "revealed", fullDestinationUrl: "https://example.com/p?q=1" });
+  assert.equal(await value(db, "select action_type from public.moderation_actions"), "reveal_destination", "reveal is audited");
+});
+
+test("queue lists open cases by severity without destinations; triage and resolve are audited", async () => {
+  const db = await database();
+  await createLink(db);
+  await report(db, "1", "spam");
+  await report(db, "2", "malware");
+  const queue = await value(db, "select public.admin_list_cases_v1(50, 0)");
+  assert.equal(queue.total, 1);
+  assert.equal(queue.items[0].priority, "S1");
+  assert.deepEqual(queue.items[0].reportsByReason, { spam: 1, malware: 1 });
+  assert.ok(!JSON.stringify(queue).includes("p?q=1"));
+  const caseId = queue.items[0].caseId;
+  await assert.rejects(db.query("select public.admin_transition_case_v1($1, 'triage', 'founder-subject', '  ')", [caseId]), /note is required/);
+  assert.equal((await value(db, "select public.admin_transition_case_v1($1, 'triage', 'founder-subject', 'Looking')", [caseId])).caseState, "triaged");
+  assert.equal(Number(await value(db, "select count(*) from public.reports where workflow_state = 'triaged'")), 2);
+  assert.equal((await value(db, "select public.admin_transition_case_v1($1, 'resolve', 'founder-subject', 'Not abusive')", [caseId])).caseState, "closed");
+  assert.equal((await value(db, "select public.admin_list_cases_v1(50, 0)")).total, 0);
+  const actions = (await db.query("select action_type, reason_detail, actor_principal_id from public.moderation_actions order by occurred_at")).rows;
+  assert.deepEqual(actions.map((row) => [row.action_type, row.reason_detail, row.actor_principal_id]), [
+    ["triage", "Looking", "founder-subject"], ["resolve", "Not abusive", "founder-subject"],
+  ]);
+});
+
+test("disable and restore change redirect state atomically, idempotently, and with audit", async () => {
+  const db = await database();
+  await createLink(db);
+  await assert.rejects(db.query("select public.admin_moderate_link_v1($1, 'disable', 'f', null, null, $2, $3)", [CODE, "1".repeat(64), "a".repeat(64)]));
+  const disabled = await moderate(db, "disable", "1");
+  assert.deepEqual(disabled, { kind: "changed", canonicalCode: CODE, lifecycleState: "disabled" });
+  assert.equal((await resolve(db, CODE)).decision, "disabled", "redirect shows the unavailable page");
+  assert.equal(await value(db, "select discovery_state from public.canonical_links"), "withheld");
+  assert.equal((await moderate(db, "disable", "1")).kind, "replayed");
+  assert.equal((await moderate(db, "disable", "1", "abuse_report", "b".repeat(64))).kind, "conflict");
+  assert.equal((await moderate(db, "disable", "2")).kind, "unchanged");
+  const restored = await moderate(db, "restore", "3", "operator_correction");
+  assert.deepEqual(restored, { kind: "changed", canonicalCode: CODE, lifecycleState: "active" });
+  assert.equal((await resolve(db, CODE)).decision, "redirect");
+  const history = (await value(db, "select public.admin_link_record_v1($1)", [CODE])).history;
+  assert.deepEqual(history.map((entry) => [entry.actionType, entry.reasonCode]), [["restore", "operator_correction"], ["disable", "abuse_report"]]);
+});
+
+test("restore is refused while safety is pending or blocked", async () => {
+  const db = await database();
+  await createLink(db);
+  await moderate(db, "disable", "1");
+  await db.exec("update public.canonical_links set safety_state = 'blocked'");
+  assert.deepEqual(await moderate(db, "restore", "2", "operator_correction"), { kind: "safety_conflict", safetyState: "blocked" });
+  assert.equal((await resolve(db, CODE)).decision, "disabled");
+  assert.equal(Number(await value(db, "select count(*) from public.moderation_actions where action_type = 'restore'")), 0);
 });

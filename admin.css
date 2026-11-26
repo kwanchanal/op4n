@@ -9,7 +9,7 @@
 
 .admin-main {
   width: 100%;
-  max-width: 480px;
+  max-width: 720px;
   height: auto;
   max-height: none;
 }
@@ -116,3 +116,50 @@
 .admin-signout .material-symbols-outlined {
   font-size: 18px;
 }
+
+.admin-tools { display: grid; gap: 14px; }
+.admin-tools[hidden], .admin-pager[hidden], [role="tabpanel"][hidden] { display: none; }
+.link-filter-pill[aria-selected="true"] { background: var(--primary); color: var(--primary-foreground); }
+#queueList, #lookupResult { display: grid; gap: 12px; }
+
+.admin-case {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+.admin-case p { margin: 0; }
+.admin-case-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-case-title { font-weight: 600; overflow-wrap: anywhere; }
+.admin-case-state { margin-left: auto; font-size: 12px; color: var(--muted); }
+.admin-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.admin-badge-S1 { background: #fee2e2; color: #991b1b; }
+.admin-badge-S2 { background: #ffedd5; color: #9a3412; }
+.admin-badge-S3 { background: var(--secondary); color: var(--ink); }
+.admin-cta-small { justify-self: start; flex: none; padding: 8px 16px; min-height: 0; }
+
+.admin-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-actions .cta { flex: none; padding: 10px 16px; }
+.admin-subhead { margin: 4px 0 0; font-size: 15px; }
+.admin-history { margin: 0; padding-left: 20px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.admin-facts dd { overflow-wrap: anywhere; }
+.admin-link-button {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.admin-moderation, .admin-case-actions { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.admin-moderation select, .admin-moderation textarea, .admin-case-actions textarea { width: 100%; }
+.admin-danger { background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%); border-color: #7f1d1d; }
+.admin-dialog { max-width: 420px; }
+.admin-dialog p { margin: 8px 0 16px; }
