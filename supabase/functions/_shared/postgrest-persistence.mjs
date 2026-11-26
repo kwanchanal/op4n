@@ -63,6 +63,16 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
     async resolveRedirect(canonicalCode) {
       return callRpc("resolve_canonical_redirect_v1", { p_code: canonicalCode });
     },
+    async claimNotifications(input) {
+      return callRpc("claim_notifications_v1", {
+        p_environment: input.environment,
+        p_limit: input.limit,
+        p_lease_seconds: input.leaseSeconds,
+      });
+    },
+    async completeNotifications(input) {
+      return callRpc("complete_notifications_v1", { p_batch_id: input.batchId, p_outcome: input.outcome });
+    },
     async recordClick(input) {
       return callRpc("record_click_v1", {
         p_event_id: input.eventId,

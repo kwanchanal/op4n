@@ -1,6 +1,8 @@
-// Internal service operations for the redirect Worker:
-//   POST /api/v1/internal/redirect-lookup  (resolveCanonicalRedirect)
-//   POST /api/v1/internal/clicks           (recordRedirectClick)
+// Internal service operations for the Workers:
+//   POST /api/v1/internal/redirect-lookup          (resolveCanonicalRedirect)
+//   POST /api/v1/internal/clicks                   (recordRedirectClick)
+//   POST /api/v1/internal/notifications/claim      (claimFounderNotifications)
+//   POST /api/v1/internal/notifications/complete   (completeFounderNotifications)
 // Authorized only by the environment-scoped INTERNAL_SERVICE_CREDENTIAL.
 // These are not browser endpoints: no CORS headers, no Vary: Origin.
 
@@ -160,5 +162,62 @@ export function createClickHandler({ credential, persistence, requestId = () => 
       return error(409, "IDEMPOTENCY_CONFLICT", "The event identity was already used for a different click.", id);
     }
     return error(400, "VALIDATION_ERROR", "The request contains invalid fields.", id);
+  };
+}
+
+const unavailable = (id) =>
+  error(503, "DEPENDENCY_UNAVAILABLE", "A required service is temporarily unavailable.", id, { "Retry-After": "1" });
+
+// Claims due founder notifications for this environment. The response holds
+// only short codes, kinds, reason categories, counts, and times.
+export function createNotificationClaimHandler({ credential, persistence, environment, requestId = () => crypto.randomUUID() }) {
+  return async function handleClaim(request) {
+    const id = requestId();
+    const rejected = guard(request, credential, id);
+    if (rejected) return rejected;
+    const { body, failure } = await readJson(request, id);
+    if (failure) return failure;
+    if (!hasOnly(body, [])) return error(400, "VALIDATION_ERROR", "The request contains invalid fields.", id);
+    let result;
+    try {
+      result = await persistence.claimNotifications({ environment, limit: 200, leaseSeconds: 120 });
+    } catch {
+      return unavailable(id);
+    }
+    const entries = Array.isArray(result?.entries) ? result.entries : [];
+    return json(200, {
+      batchId: result?.batchId ?? null,
+      events: Number(result?.events ?? 0),
+      entries: entries.map((entry) => ({
+        canonicalCode: String(entry.canonicalCode),
+        kind: entry.kind === "safety_block" ? "safety_block" : "report",
+        reasonCategory: entry.reasonCategory ?? null,
+        priority: ["S1", "S2", "S3"].includes(entry.priority) ? entry.priority : "S3",
+        count: Number(entry.count),
+        firstAt: new Date(entry.firstAt).toISOString(),
+        lastAt: new Date(entry.lastAt).toISOString(),
+      })),
+    }, id);
+  };
+}
+
+export function createNotificationCompleteHandler({ credential, persistence, requestId = () => crypto.randomUUID() }) {
+  return async function handleComplete(request) {
+    const id = requestId();
+    const rejected = guard(request, credential, id);
+    if (rejected) return rejected;
+    const { body, failure } = await readJson(request, id);
+    if (failure) return failure;
+    if (!hasOnly(body, ["batchId", "outcome"]) || !UUID_V4.test(String(body.batchId)) ||
+        !["sent", "failed"].includes(body.outcome)) {
+      return error(400, "VALIDATION_ERROR", "The request contains invalid fields.", id);
+    }
+    let result;
+    try {
+      result = await persistence.completeNotifications({ batchId: String(body.batchId).toLowerCase(), outcome: body.outcome });
+    } catch {
+      return unavailable(id);
+    }
+    return json(200, { updated: Number(result?.updated ?? 0), exhausted: Number(result?.exhausted ?? 0) }, id);
   };
 }

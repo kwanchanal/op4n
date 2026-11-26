@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createClickHandler,
+  createNotificationClaimHandler,
+  createNotificationCompleteHandler,
   createRedirectLookupHandler,
 } from "../../supabase/functions/_shared/internal-handlers.mjs";
 import { routeOperation } from "../../supabase/functions/_shared/router.mjs";
@@ -172,4 +174,39 @@ test("click recording validates identity, payload, and key equality", async () =
     assert.equal((await handler(request)).status, 400);
   }
   assert.deepEqual(calls, []);
+});
+
+test("notification claim and complete require the internal credential and validate input", async () => {
+  assert.equal(routeOperation(`/functions/v1/op4n-api/api/v1/internal/notifications/claim`), "claimFounderNotifications");
+  assert.equal(routeOperation(`/functions/v1/op4n-api/api/v1/internal/notifications/complete`), "completeFounderNotifications");
+  const calls = [];
+  const persistence = {
+    async claimNotifications(input) {
+      calls.push(["claim", input]);
+      return { batchId: "11111111-2222-4333-8444-555555555555", events: 2, entries: [
+        { canonicalCode: "Abc123XYZ9", kind: "report", reasonCategory: "spam", priority: "S3", count: 2, firstAt: "2026-11-26T10:00:00Z", lastAt: "2026-11-26T10:01:00Z", destination: "https://leak.example" },
+      ] };
+    },
+    async completeNotifications(input) {
+      calls.push(["complete", input]);
+      return { updated: 2, exhausted: 0 };
+    },
+  };
+  const claim = createNotificationClaimHandler({ credential: CREDENTIAL, persistence, environment: "staging" });
+  const complete = createNotificationCompleteHandler({ credential: CREDENTIAL, persistence });
+
+  assert.equal((await claim(post("notifications/claim", {}, { credential: "wrong".repeat(10) }))).status, 401);
+  assert.equal((await claim(post("notifications/claim", { limit: 999 }))).status, 400);
+  const claimed = await claim(post("notifications/claim", {}));
+  assert.equal(claimed.status, 200);
+  const body = await claimed.json();
+  assert.equal(body.events, 2);
+  assert.ok(!JSON.stringify(body).includes("leak.example"), "only allowlisted entry fields are returned");
+  assert.deepEqual(calls[0], ["claim", { environment: "staging", limit: 200, leaseSeconds: 120 }]);
+
+  assert.equal((await complete(post("notifications/complete", { batchId: "nope", outcome: "sent" }))).status, 400);
+  assert.equal((await complete(post("notifications/complete", { batchId: body.batchId, outcome: "maybe" }))).status, 400);
+  const done = await complete(post("notifications/complete", { batchId: body.batchId, outcome: "sent" }));
+  assert.deepEqual(await done.json(), { updated: 2, exhausted: 0 });
+  assert.equal(done.headers.get("Access-Control-Allow-Origin"), null, "internal routes have no CORS");
 });

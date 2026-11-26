@@ -7,7 +7,12 @@ import {
 import { createDestinationPolicy } from "../_shared/destination-policy.mjs";
 import { createFeatureFlagReader } from "../_shared/feature-flags.mjs";
 import { createPostgresRateLimitGate, resolveRateLimits } from "../_shared/rate-limit.mjs";
-import { createClickHandler, createRedirectLookupHandler } from "../_shared/internal-handlers.mjs";
+import {
+  createClickHandler,
+  createNotificationClaimHandler,
+  createNotificationCompleteHandler,
+  createRedirectLookupHandler,
+} from "../_shared/internal-handlers.mjs";
 import { createReportHandler } from "../_shared/report-handler.mjs";
 import { routeOperation } from "../_shared/router.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
@@ -124,6 +129,8 @@ const handlers = {
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
   recordRedirectClick: createClickHandler({ credential: internalCredential, persistence }),
+  claimFounderNotifications: createNotificationClaimHandler({ credential: internalCredential, persistence, environment }),
+  completeFounderNotifications: createNotificationCompleteHandler({ credential: internalCredential, persistence }),
   getAdminSession: adminRoute("getAdminSession", adminSessionHandler({ environment })),
   submitPublicLinkReport: createReportHandler({
     environment,

@@ -1,0 +1,26 @@
+# Founder notification digest Worker. Deployed only by
+# .github/workflows/deploy-staging.yml (Staging). Production is enabled by the
+# R1 production cutover card.
+name = "op4n-notifier"
+main = "src/index.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+[env.staging]
+name = "op4n-notifier-staging"
+
+[env.staging.triggers]
+crons = ["*/5 * * * *"]
+
+[[env.staging.send_email]]
+name = "NOTIFY_EMAIL"
+
+[env.staging.vars]
+OP4N_ENVIRONMENT = "staging"
+FRONTEND_ORIGIN = "https://staging.op4n.com"
+SHORT_HOST = "staging.op4n.me"
+NOTIFY_FROM = "notify-staging@op4n.com"
+# API_BASE_URL is passed with --var at deploy time. NOTIFY_TO and
+# INTERNAL_SERVICE_CREDENTIAL are Worker secrets (wrangler prints --var values
+# in deploy logs, so the address is never a var). NOTIFY_TO must be a verified
+# Email Routing destination address.

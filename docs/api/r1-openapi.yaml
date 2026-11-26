@@ -33,6 +33,8 @@ tags:
     description: Worker-only deduplicated redirect click recording.
   - name: Operations
     description: Environment-scoped internal liveness and readiness checks.
+  - name: Internal notifications
+    description: Worker-only founder notification outbox claim and completion.
 x-environment-contract:
   productionFrontendOrigin: https://op4n.com
   stagingFrontendOrigins:
@@ -540,6 +542,107 @@ paths:
         '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
         '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
         '429': { $ref: '#/components/responses/InternalRateLimited' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/notifications/claim:
+    post:
+      tags: [Internal notifications]
+      operationId: claimFounderNotifications
+      summary: Claim due founder notifications as one leased digest batch
+      description: >-
+        Leases up to 200 due outbox rows for 120 seconds and returns them grouped
+        by short code, kind, and reason category. Never returns destinations,
+        report text, or reporter data.
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: lease-based
+      x-rate-limit-class: internal-notifications
+      x-data-classification: protected
+      x-cache-behavior: no-store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, maxProperties: 0 }
+            example: {}
+      responses:
+        '200':
+          description: A claimed batch, or batchId null when nothing is due.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationBatch' }
+              example:
+                batchId: 00000000-0000-4000-8000-000000000020
+                events: 2
+                entries:
+                  - canonicalCode: R1EXAMPLE
+                    kind: report
+                    reasonCategory: spam
+                    priority: S3
+                    count: 2
+                    firstAt: '2026-11-26T10:00:00.000Z'
+                    lastAt: '2026-11-26T10:01:00.000Z'
+        '400': { $ref: '#/components/responses/InternalValidationError' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
+        '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/notifications/complete:
+    post:
+      tags: [Internal notifications]
+      operationId: completeFounderNotifications
+      summary: Complete a claimed batch as sent or failed
+      description: >-
+        "failed" schedules a retry with backoff and marks rows failed after 3
+        attempts; "exhausted" reports those rows so the notifier raises an alert.
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: batch-scoped
+      x-rate-limit-class: internal-notifications
+      x-data-classification: protected
+      x-cache-behavior: no-store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [batchId, outcome]
+              properties:
+                batchId: { type: string, format: uuid }
+                outcome: { type: string, enum: [sent, failed] }
+            example:
+              batchId: 00000000-0000-4000-8000-000000000020
+              outcome: sent
+      responses:
+        '200':
+          description: Rows updated for the batch.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [updated, exhausted]
+                properties:
+                  updated: { type: integer, minimum: 0 }
+                  exhausted: { type: integer, minimum: 0 }
+              example:
+                updated: 2
+                exhausted: 0
+        '400': { $ref: '#/components/responses/InternalValidationError' }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
+        '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
         '500': { $ref: '#/components/responses/InternalServerError' }
         '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
   /api/v1/internal/health/live:
@@ -1096,6 +1199,30 @@ components:
           type: array
           maxItems: 20
           items: { $ref: '#/components/schemas/ValidationDetail' }
+    NotificationBatch:
+      type: object
+      additionalProperties: false
+      required: [batchId, events, entries]
+      properties:
+        batchId: { type: [string, 'null'], format: uuid }
+        events: { type: integer, minimum: 0 }
+        entries:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [canonicalCode, kind, reasonCategory, priority, count, firstAt, lastAt]
+            properties:
+              canonicalCode: { type: string, pattern: '^[A-Za-z0-9]{6,32}$' }
+              kind: { type: string, enum: [report, safety_block] }
+              reasonCategory:
+                type: [string, 'null']
+                enum: [phishing, malware, child_safety, illegal, impersonation, abuse, spam, other, null]
+              priority: { type: string, enum: [S1, S2, S3] }
+              count: { type: integer, minimum: 1 }
+              firstAt: { type: string, format: date-time }
+              lastAt: { type: string, format: date-time }
     AdminSession:
       type: object
       additionalProperties: false

@@ -21,6 +21,7 @@ async function database() {
     ["202611190001_redirect_lookup_and_clicks.sql", "op4n_purge_expired_click_events"],
     ["202611200001_rate_limits_and_feature_flags.sql", "op4n_purge_rate_limit_counters"],
     ["202611230001_reports_and_moderation.sql", null],
+    ["202611260001_notification_outbox.sql", "op4n_purge_sent_notifications"],
   ]) {
     const sql = await migration(name);
     if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
@@ -291,6 +292,77 @@ test("moderation actions are append-only and state changes require a reason", as
   const grants = (await db.query(
     `select grantee from information_schema.role_routine_grants
      where routine_name in ('submit_report_v1', 'report_severity') and grantee in ('anon', 'authenticated', 'PUBLIC')`,
+  )).rows;
+  assert.deepEqual(grants, []);
+});
+
+const claim = (db) => value(db, "select public.claim_notifications_v1('staging', 200, 120)");
+const complete = (db, batch, outcome) => value(db, "select public.complete_notifications_v1($1, $2)", [batch, outcome]);
+
+test("accepted reports enqueue one notification each; replays do not", async () => {
+  const db = await database();
+  await createLink(db);
+  await report(db, "1", "phishing");
+  await report(db, "1", "phishing");
+  await report(db, "2", "spam");
+  assert.equal(Number(await value(db, "select count(*) from public.notification_outbox")), 2);
+  const columns = (await db.query("select column_name from information_schema.columns where table_name = 'notification_outbox'")).rows.map((row) => row.column_name);
+  for (const forbidden of ["destination", "full_destination_url", "report_detail", "detail", "ip", "email"]) {
+    assert.ok(!columns.includes(forbidden), `outbox must not have ${forbidden}`);
+  }
+});
+
+test("a claim groups ten reports into one digest batch and a second claim finds nothing", async () => {
+  const db = await database();
+  await createLink(db);
+  for (let index = 0; index < 10; index += 1) await report(db, String(index), index < 7 ? "phishing" : "spam");
+  const batch = await claim(db);
+  assert.equal(batch.events, 10);
+  assert.deepEqual(batch.entries.map((entry) => [entry.canonicalCode, entry.reasonCategory, entry.count, entry.priority]), [
+    [CODE, "phishing", 7, "S1"],
+    [CODE, "spam", 3, "S3"],
+  ]);
+  assert.equal((await claim(db)).batchId, null, "claimed rows are leased");
+  assert.deepEqual(await complete(db, batch.batchId, "sent"), { updated: 10, exhausted: 0 });
+  assert.equal(Number(await value(db, "select count(*) from public.notification_outbox where state = 'sent'")), 10);
+  assert.equal(Number(await value(db, "select public.purge_sent_notifications_v1()")), 0, "fresh sent rows are kept");
+  await db.exec("update public.notification_outbox set sent_at = now() - interval '31 days'");
+  assert.equal(Number(await value(db, "select public.purge_sent_notifications_v1()")), 10);
+});
+
+test("failures retry with backoff, an expired lease is reclaimed, and 3 failures exhaust", async () => {
+  const db = await database();
+  await createLink(db);
+  await report(db, "1", "malware");
+  let batch = await claim(db);
+  assert.deepEqual(await complete(db, batch.batchId, "failed"), { updated: 1, exhausted: 0 });
+  assert.equal((await claim(db)).batchId, null, "backoff delays the retry");
+  await db.exec("update public.notification_outbox set available_at = now() - interval '1 second'");
+  batch = await claim(db);
+  assert.equal(batch.events, 1);
+  await db.exec("update public.notification_outbox set lease_until = now() - interval '1 second'");
+  const reclaimed = await claim(db);
+  assert.equal(reclaimed.events, 1, "a crashed sender's lease expires and the row is not lost");
+  assert.deepEqual(await complete(db, batch.batchId, "sent"), { updated: 0, exhausted: 0 }, "a stale batch cannot complete");
+  await complete(db, reclaimed.batchId, "failed");
+  await db.exec("update public.notification_outbox set available_at = now() - interval '1 second'");
+  const third = await claim(db);
+  assert.deepEqual(await complete(db, third.batchId, "failed"), { updated: 1, exhausted: 1 });
+  assert.equal(await value(db, "select state from public.notification_outbox"), "failed");
+  assert.equal(Number(await value(db, "select attempts from public.notification_outbox")), 3);
+});
+
+test("safety blocks enqueue an S1 entry and browser roles cannot touch the outbox", async () => {
+  const db = await database();
+  await createLink(db);
+  const linkId = await value(db, "select id from public.canonical_links");
+  await db.query("select public.enqueue_safety_block_notification_v1('staging', $1)", [linkId]);
+  const batch = await claim(db);
+  assert.deepEqual(batch.entries.map((entry) => [entry.kind, entry.reasonCategory, entry.priority]), [["safety_block", null, "S1"]]);
+  const grants = (await db.query(
+    `select grantee from information_schema.role_routine_grants
+     where routine_name in ('claim_notifications_v1', 'complete_notifications_v1', 'enqueue_safety_block_notification_v1')
+       and grantee in ('anon', 'authenticated', 'PUBLIC')`,
   )).rows;
   assert.deepEqual(grants, []);
 });
