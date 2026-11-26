@@ -1,54 +1,10 @@
 (() => {
   "use strict";
 
-  const CAPABILITY = Object.freeze({
-    GUEST_ACTION: "guest-action",
-    REGISTERED_PREVIEW: "registered-preview",
-  });
-
-  const REGISTERED_FEATURES = Object.freeze([
-    {
-      id: "qr",
-      label: "QR Code",
-      icon: "qr_code_2",
-      description: "Registered owners will be able to generate, preview, and download a QR code for a link they own.",
-    },
-    {
-      id: "edit",
-      label: "Edit link",
-      icon: "edit",
-      description: "Registered owners will be able to update the title and destination of links they created while signed in.",
-    },
-    {
-      id: "privacy",
-      label: "Privacy / Visibility",
-      icon: "visibility",
-      description: "Registered owners will be able to choose Public or Unlisted visibility for links they own.",
-    },
-    {
-      id: "settings",
-      label: "Link Settings",
-      icon: "tune",
-      description: "Registered owners will be able to manage settings for links they own.",
-    },
-    {
-      id: "slug",
-      label: "Custom Slug",
-      icon: "ink_pen",
-      description: "Registered owners will be able to choose a memorable back-half for an owned link.",
-    },
-    {
-      id: "analytics",
-      label: "Detailed analytics",
-      icon: "query_stats",
-      description: "Registered owners will be able to explore detailed performance for links they own.",
-    },
-  ]);
-
-  const PUBLIC_CARD_CAPABILITIES = Object.freeze({
-    guestActions: Object.freeze(["copy", "open", "clicks", "report"]),
-    registeredPreviews: REGISTERED_FEATURES,
-  });
+  // The public card, its Report flow, and the Registered preview dialog are
+  // shared with Latest Links and exact search (public-card.js).
+  const publicCard = window.op4nPublicCard;
+  const { PUBLIC_CARD_CAPABILITIES, createPublicCard, withSupportReference } = publicCard;
 
   const state = {
     activeFilter: "created",
@@ -59,11 +15,6 @@
     rateLimitTimer: 0,
     createInFlight: false,
     lastCreateRequest: null,
-    activeDialogTrigger: null,
-    activeReportTrigger: null,
-    activeReportLink: null,
-    reportInFlight: false,
-    reportRequest: null,
   };
 
   const elements = {
@@ -84,25 +35,6 @@
     formRetryButton: document.getElementById("formRetryButton"),
     linksList: document.getElementById("linksList"),
     filterButtons: Array.from(document.querySelectorAll("[data-link-filter]")),
-    capabilityDialog: document.getElementById("capabilityDialog"),
-    capabilityDialogTitle: document.getElementById("capabilityDialogTitle"),
-    capabilityDialogDescription: document.getElementById("capabilityDialogDescription"),
-    capabilityDialogClose: document.getElementById("capabilityDialogClose"),
-    capabilityNotNow: document.getElementById("capabilityNotNow"),
-    capabilitySignup: document.getElementById("capabilitySignup"),
-    qrShowcase: document.getElementById("qrShowcase"),
-    qrShowcaseFeatures: document.getElementById("qrShowcaseFeatures"),
-    reportDialog: document.getElementById("reportDialog"),
-    reportDialogClose: document.getElementById("reportDialogClose"),
-    reportCancel: document.getElementById("reportCancel"),
-    reportForm: document.getElementById("reportForm"),
-    reportCategory: document.getElementById("reportCategory"),
-    reportCategoryError: document.getElementById("reportCategoryError"),
-    reportReasonCount: document.getElementById("reportReasonCount"),
-    reportReason: document.getElementById("reportReason"),
-    reportReasonError: document.getElementById("reportReasonError"),
-    reportStatus: document.getElementById("reportStatus"),
-    reportSubmit: document.getElementById("reportSubmit"),
     adPanel: document.getElementById("adPanel"),
     adSheetHandle: document.getElementById("adSheetHandle"),
     adPanelShowcase: document.getElementById("adPanelShowcase"),
@@ -116,35 +48,6 @@
     adContactEmail: document.getElementById("adContactEmail"),
     adContactMessage: document.getElementById("adContactMessage"),
   };
-
-  function escapeHTML(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function getShortLink(link) {
-    return link.shortUrl || `https://op4n.me/${link.code || link.shortCode}`;
-  }
-
-  // Visible short URL without the scheme (op4n.me/CODE). Copy and Open always
-  // use the full canonical URL.
-  function splitShortUrl(url) {
-    const match = String(url).match(/^(https?:\/\/)(.*)$/);
-    return match ? { scheme: match[1], display: match[2] } : { scheme: "", display: String(url) };
-  }
-
-  function getSafeHttpUrl(value) {
-    try {
-      const parsedUrl = new URL(String(value));
-      return ["http:", "https:"].includes(parsedUrl.protocol) ? parsedUrl.href : "";
-    } catch {
-      return "";
-    }
-  }
 
   // Prototype-only wording is shown only while the deterministic mock adapter
   // is active; the http adapter never shows it.
@@ -172,7 +75,9 @@
   } = window.op4nDestinationUrlValidation;
 
   const CREATE_TIMEOUT_MS = 15000;
-  const COPY_CONFIRMATION_MS = 1600;
+  // Order 61: shown when the server withholds a link from public discovery.
+  const DISCOVERY_WITHHELD_MESSAGE =
+    "Your link works, but it won’t appear in Latest Links or search because the destination looks private.";
 
   function setCreatePhase(phase, message = "", options = {}) {
     const creating = phase === "creating";
@@ -257,84 +162,6 @@
     return "";
   }
 
-  function withSupportReference(message, error) {
-    const requestId = typeof error?.requestId === "string" ? error.requestId : "";
-    return requestId ? `${message} (Ref ${requestId.slice(0, 8)})` : message;
-  }
-
-  const clickNumberFormat = new Intl.NumberFormat("en-US");
-
-  // Aggregate total of successful redirects. "Clicks", never people or visitors.
-  // A missing or invalid value is shown as unavailable rather than 0.
-  function hasClickCount(value) {
-    return typeof value === "number" && Number.isInteger(value) && value >= 0;
-  }
-
-  function formatClicks(value) {
-    if (!hasClickCount(value)) return "— clicks";
-    return `${clickNumberFormat.format(value)} ${value === 1 ? "click" : "clicks"}`;
-  }
-
-  function describeClicks(value) {
-    return hasClickCount(value) ? formatClicks(value) : "Click count temporarily unavailable";
-  }
-
-  async function copyText(value) {
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value);
-        return true;
-      } catch {
-        // Continue to the in-page fallback.
-      }
-    }
-
-    const fallback = document.createElement("textarea");
-    fallback.value = value;
-    fallback.readOnly = true;
-    fallback.className = "clipboard-fallback";
-    fallback.setAttribute("aria-label", "Short link to copy");
-    document.body.append(fallback);
-    fallback.select();
-    fallback.setSelectionRange(0, value.length);
-    let copied = false;
-    try {
-      copied = typeof document.execCommand === "function" && document.execCommand("copy");
-    } catch {
-      copied = false;
-    }
-    fallback.remove();
-    return copied;
-  }
-
-  // Final copy fallback: a visible, pre-selected field inside the card.
-  function showCopyFallback(card, value) {
-    let field = card.querySelector(".copy-fallback-field");
-    if (!field) {
-      const wrapper = document.createElement("div");
-      wrapper.className = "copy-fallback";
-      const label = document.createElement("label");
-      label.textContent = "Press Ctrl/Cmd+C to copy";
-      field = document.createElement("input");
-      field.type = "text";
-      field.readOnly = true;
-      field.className = "copy-fallback-field";
-      field.value = value;
-      label.htmlFor = field.id = `copy-fallback-${card.dataset.linkId}`.replace(/[^A-Za-z0-9_-]/g, "-");
-      wrapper.append(label, field);
-      card.querySelector(".link-card-toolbar").after(wrapper);
-    }
-    field.focus();
-    field.select();
-  }
-
-  function announce(statusElement, message) {
-    statusElement.textContent = "";
-    window.requestAnimationFrame(() => {
-      statusElement.textContent = message;
-    });
-  }
-
   function setFilter(filter) {
     state.activeFilter = filter;
     elements.filterButtons.forEach((button) => {
@@ -399,269 +226,6 @@
     );
   }
 
-  function createPublicCard(link, capabilities) {
-    const card = document.createElement("article");
-    card.className = `link-card public-link-card${link.source === "example" ? " is-example" : ""}`;
-    card.dataset.linkId = link.id;
-    card.dataset.capability = CAPABILITY.GUEST_ACTION;
-
-    const shortLink = getShortLink(link);
-    const { scheme: shortScheme, display: shortDisplay } = splitShortUrl(shortLink);
-    const safeShortScheme = escapeHTML(shortScheme);
-    const safeShortDisplay = escapeHTML(shortDisplay);
-    // The card never holds the full destination: Open navigates through the
-    // canonical short URL (openUrl), so the redirect service resolves the
-    // stored destination and counts the click. The summary is server-approved.
-    const openUrl = getSafeHttpUrl(link.openUrl);
-    const destinationSummary = openUrl ? String(link.destinationSummary || "") : "";
-    const safeTitle = escapeHTML(link.title || "Untitled link");
-    const safeDestinationSummary = escapeHTML(destinationSummary);
-    const safeShortLink = escapeHTML(shortLink);
-    const exampleLabel = link.source === "example"
-      ? '<div class="link-example-label">Example</div>'
-      : "";
-
-    card.innerHTML = `
-      ${exampleLabel}
-      <div class="link-row public-link-summary">
-        <div class="link-drag" aria-hidden="true">
-          <span class="material-symbols-outlined">link</span>
-        </div>
-        <div class="link-info">
-          <div class="link-title-row">
-            <span class="link-title" title="${safeTitle}">${safeTitle}</span>
-          </div>
-          <div class="link-short-row">
-            <span class="link-short-url"><span class="sr-only">${safeShortScheme}</span>${safeShortDisplay}</span>
-          </div>
-          <div class="link-url-row link-destination-field">
-            <span class="link-field-label">Destination URL :</span>
-            ${openUrl ? `<a class="link-url open-destination-btn" href="${escapeHTML(openUrl)}" target="_blank" rel="noopener noreferrer" title="${safeDestinationSummary}" aria-label="Open destination ${safeDestinationSummary} in a new tab">
-              ${safeDestinationSummary}
-            </a>` : '<span class="link-url">Destination unavailable</span>'}
-          </div>
-        </div>
-      </div>
-
-      <div class="link-card-toolbar" aria-label="Link actions">
-        <div class="guest-action-row">
-          ${capabilities.guestActions.includes("clicks") ? `<button class="guest-action-button public-click-count click-count-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Clicks" aria-label="View aggregate clicks: ${describeClicks(link.clickCount)}">
-            <span class="material-symbols-outlined" aria-hidden="true">bar_chart</span>
-            <strong>${formatClicks(link.clickCount)}</strong>
-          </button>` : ""}
-          ${capabilities.guestActions.includes("copy") ? `<button class="guest-action-button copy-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Copy link" aria-label="Copy short link ${safeShortDisplay}">
-            <span class="material-symbols-outlined copy-icon" aria-hidden="true">content_copy</span>
-            <span class="sr-only action-label">Copy short link</span>
-          </button>` : ""}
-          ${capabilities.guestActions.includes("open") && openUrl ? `<a class="guest-action-button open-destination-btn" href="${escapeHTML(openUrl)}" target="_blank" rel="noopener noreferrer"
-             data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Open destination" aria-label="Open destination ${safeDestinationSummary} in a new tab">
-            <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
-            <span class="sr-only">Open destination</span>
-          </a>` : ""}
-          ${capabilities.guestActions.includes("report") ? `<button class="guest-action-button report-link-btn" type="button" data-access="${CAPABILITY.GUEST_ACTION}" data-tooltip="Report link" aria-label="Report ${safeShortLink}">
-            <span class="material-symbols-outlined" aria-hidden="true">flag</span>
-            <span class="sr-only">Report link</span>
-          </button>` : ""}
-        </div>
-        <div class="registered-preview-grid" aria-label="Registered feature previews">
-          ${capabilities.registeredPreviews.map((feature) => `
-            <button
-              class="registered-preview-button"
-              type="button"
-              data-access="${CAPABILITY.REGISTERED_PREVIEW}"
-              data-feature="${feature.id}"
-              data-tooltip="${feature.label} — Registered to unlock"
-              aria-disabled="true"
-              aria-label="${feature.label} — Registered to unlock"
-            >
-              <span class="material-symbols-outlined" aria-hidden="true">${feature.icon}</span>
-              <span class="sr-only">${feature.label} — Registered to unlock</span>
-            </button>
-          `).join("")}
-        </div>
-      </div>
-      <div class="card-live-status" role="status" aria-live="polite"></div>
-    `;
-
-
-    let copyResetTimer = 0;
-    card.querySelector(".copy-link-btn")?.addEventListener("click", async (event) => {
-      const button = event.currentTarget;
-      const status = card.querySelector(".card-live-status");
-      const copied = await copyText(shortLink);
-      if (!copied) {
-        showCopyFallback(card, shortLink);
-        announce(status, "Copy isn't available here. The short link is selected; press Ctrl or Cmd+C.");
-        return;
-      }
-      button.querySelector(".action-label").textContent = "Copied";
-      button.querySelector(".copy-icon").textContent = "check";
-      button.dataset.tooltip = "Copied";
-      button.classList.add("is-copied");
-      button.setAttribute("aria-label", `Copied ${shortDisplay}`);
-      announce(status, `Copied ${shortDisplay}`);
-      window.clearTimeout(copyResetTimer);
-      copyResetTimer = window.setTimeout(() => {
-        button.querySelector(".action-label").textContent = "Copy short link";
-        button.querySelector(".copy-icon").textContent = "content_copy";
-        button.dataset.tooltip = "Copy link";
-        button.classList.remove("is-copied");
-        button.setAttribute("aria-label", `Copy short link ${shortDisplay}`);
-      }, COPY_CONFIRMATION_MS);
-    });
-
-    card.querySelector(".click-count-btn")?.addEventListener("click", () => {
-      card.querySelector(".card-live-status").textContent =
-        hasClickCount(link.clickCount)
-          ? `This public link has ${formatClicks(link.clickCount)}.`
-          : "Click count temporarily unavailable.";
-    });
-
-    card.querySelector(".report-link-btn")?.addEventListener("click", () => {
-      openReportDialog(link, card.querySelector(".report-link-btn"));
-    });
-
-    card.querySelectorAll('[data-access="registered-preview"]').forEach((button) => {
-      button.addEventListener("click", () => {
-        const feature = capabilities.registeredPreviews.find((item) => item.id === button.dataset.feature);
-        openCapabilityDialog(feature, button);
-      });
-    });
-
-    return card;
-  }
-
-  function openCapabilityDialog(feature, trigger) {
-    if (!feature) return;
-    state.activeDialogTrigger = trigger;
-    elements.capabilityDialogTitle.textContent = feature.label;
-    const isQrShowcase = feature.id === "qr";
-    elements.qrShowcase.hidden = !isQrShowcase;
-    elements.capabilityDialogDescription.textContent = isQrShowcase
-      ? window.OP4N_QR_SHOWCASE.description
-      : feature.description;
-    elements.qrShowcaseFeatures.replaceChildren();
-    if (isQrShowcase) {
-      window.OP4N_QR_SHOWCASE.features.forEach((item) => {
-        const listItem = document.createElement("li");
-        listItem.textContent = item;
-        elements.qrShowcaseFeatures.append(listItem);
-      });
-    }
-    elements.capabilitySignup.textContent = "Sign Up";
-    elements.capabilityDialog.showModal();
-  }
-
-  function closeCapabilityDialog() {
-    elements.capabilityDialog.close();
-    state.activeDialogTrigger?.focus();
-  }
-
-  function setReportStatus(message = "", status = "idle") {
-    elements.reportStatus.textContent = message;
-    elements.reportStatus.dataset.status = status;
-  }
-
-  function updateReportCount() {
-    elements.reportReasonCount.textContent = `${elements.reportReason.value.length} / 1000`;
-  }
-
-  function openReportDialog(link, trigger) {
-    state.activeReportTrigger = trigger;
-    state.activeReportLink = link;
-    state.reportRequest = null;
-    elements.reportForm.reset();
-    elements.reportCategoryError.textContent = "";
-    elements.reportCategory.setAttribute("aria-invalid", "false");
-    elements.reportReasonError.textContent = "";
-    elements.reportReason.setAttribute("aria-invalid", "false");
-    elements.reportSubmit.disabled = false;
-    elements.reportSubmit.textContent = "Submit report";
-    updateReportCount();
-    setReportStatus();
-    elements.reportDialog.showModal();
-    elements.reportCategory.focus();
-  }
-
-  function getReportErrorMessage(error) {
-    switch (error?.code) {
-      case "RATE_LIMITED":
-        return "You've sent several reports recently. Please try again later.";
-      case "LINK_NOT_FOUND":
-        return "This link can no longer be reported.";
-      case "FEATURE_UNAVAILABLE":
-        return "Reporting is temporarily paused. Please try again later.";
-      case "VALIDATION_ERROR":
-        return "Check the reason and try again.";
-      default:
-        return withSupportReference("We couldn't send your report. Your answers are still here; please try again.", error);
-    }
-  }
-
-  function closeReportDialog() {
-    if (state.reportInFlight) return;
-    elements.reportDialog.close();
-  }
-
-  async function handleReportSubmit(event) {
-    event.preventDefault();
-    if (state.reportInFlight || !state.activeReportLink) return;
-
-    const reasonCategory = elements.reportCategory.value;
-    const detail = elements.reportReason.value.trim();
-    elements.reportCategoryError.textContent = reasonCategory ? "" : "Choose a reason before submitting.";
-    elements.reportCategory.setAttribute("aria-invalid", String(!reasonCategory));
-    elements.reportReasonError.textContent = detail.length > 1000 ? "Use 1,000 characters or fewer." : "";
-    elements.reportReason.setAttribute("aria-invalid", String(detail.length > 1000));
-    if (!reasonCategory) {
-      elements.reportCategory.focus();
-      return;
-    }
-    if (detail.length > 1000) {
-      elements.reportReason.focus();
-      return;
-    }
-
-    // One report intent, one Idempotency-Key: retrying the same answers reuses it.
-    const previous = state.reportRequest;
-    const canonicalCode = state.activeReportLink.code;
-    const sameIntent = previous && previous.canonicalCode === canonicalCode &&
-      previous.reasonCategory === reasonCategory && previous.detail === detail;
-    state.reportRequest = {
-      requestId: sameIntent ? previous.requestId : newRequestId(),
-      canonicalCode,
-      reasonCategory,
-      detail,
-    };
-
-    const prototype = Boolean(window.op4nReportService?.isPrototype);
-    state.reportInFlight = true;
-    elements.reportDialog.setAttribute("aria-busy", "true");
-    elements.reportSubmit.disabled = true;
-    elements.reportSubmit.textContent = "Submitting…";
-    setReportStatus(prototype ? "Simulating report submission…" : "Sending your report…", "submitting");
-    let completed = false;
-
-    try {
-      const receipt = await window.op4nReportService.submitReport(state.reportRequest);
-      setReportStatus(
-        prototype
-          ? "Report simulated in this prototype only. No Admin or production server received it."
-          : `Thanks — we received your report (Ref ${String(receipt.receiptId).slice(0, 8)}). Questions? support@op4n.com`,
-        "success"
-      );
-      completed = true;
-      elements.reportSubmit.textContent = prototype ? "Simulated" : "Sent";
-    } catch (error) {
-      setReportStatus(getReportErrorMessage(error), "error");
-      elements.reportSubmit.textContent = "Retry report";
-    } finally {
-      state.reportInFlight = false;
-      elements.reportDialog.setAttribute("aria-busy", "false");
-      elements.reportSubmit.disabled = completed;
-    }
-  }
-
   async function createWithTimeout(request) {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), CREATE_TIMEOUT_MS);
@@ -717,11 +281,12 @@
       state.createdLinksLoaded = true;
       state.lastCreateRequest = null;
       createdLinkId = response.link.id;
+      const withheldNotice = response.link.discoveryWithheld ? ` ${DISCOVERY_WITHHELD_MESSAGE}` : "";
       setCreatePhase(
         "success",
-        isPrototypeService()
+        (isPrototypeService()
           ? "Short link created. This is prototype data only; it is not saved to a production service."
-          : "Short link created."
+          : "Short link created.") + withheldNotice
       );
       elements.linkUrl.value = "";
       elements.linkTitle.value = "";
@@ -982,6 +547,7 @@
   }
 
   function init() {
+    publicCard.init();
     // Transitional cleanup only: preserved legacy-created records are not mixed
     // into Example data or the mock Created Link service.
     window.op4nPrototypeStorage?.migrate();
@@ -1006,43 +572,13 @@
     elements.filterButtons.forEach((button) => {
       button.addEventListener("click", () => setFilter(button.dataset.linkFilter));
     });
-    elements.capabilityDialogClose.addEventListener("click", closeCapabilityDialog);
-    elements.capabilityNotNow.addEventListener("click", closeCapabilityDialog);
-    elements.capabilitySignup.addEventListener("click", () => {
-      elements.capabilityDialogDescription.textContent =
-        "Sign Up is not connected during Prototype Cleanup. This preview cannot change link data.";
-    });
-    elements.capabilityDialog.addEventListener("close", () => state.activeDialogTrigger?.focus());
-    elements.reportDialogClose.addEventListener("click", closeReportDialog);
-    elements.reportCancel.addEventListener("click", closeReportDialog);
-    elements.reportForm.addEventListener("submit", handleReportSubmit);
-    elements.reportCategory.addEventListener("change", () => {
-      if (elements.reportCategory.value) {
-        elements.reportCategoryError.textContent = "";
-        elements.reportCategory.setAttribute("aria-invalid", "false");
-      }
-    });
-    elements.reportReason.addEventListener("input", () => {
-      updateReportCount();
-      if (elements.reportReason.value.length <= 1000) {
-        elements.reportReasonError.textContent = "";
-        elements.reportReason.setAttribute("aria-invalid", "false");
-      }
-    });
-    elements.reportDialog.addEventListener("cancel", (event) => {
-      if (state.reportInFlight) event.preventDefault();
-    });
-    elements.reportDialog.addEventListener("close", () => {
-      state.activeReportTrigger?.focus();
-      state.activeReportTrigger = null;
-      state.activeReportLink = null;
-    });
-
     initSidebar();
     initTopbar();
     initBanner();
     initPromotionalPanel();
     void renderLinks();
+    // "Make a link" from Latest Links opens index.html#linkUrl.
+    if (window.location.hash === "#linkUrl") elements.linkUrl.focus();
   }
 
   init();

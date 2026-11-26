@@ -2233,3 +2233,84 @@ flex-direction: column-reverse;
   border-radius: 6px;
   font: inherit;
 }
+
+/* ── Latest Links and exact search (Orders 69-75) ───────────────────── */
+.latest-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.latest-search-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.latest-search-button {
+  flex: 0 0 auto;
+  width: auto;
+  padding-inline: 22px;
+}
+.latest-search-result:not(:empty) {
+  margin-top: 16px;
+}
+.latest-section-title {
+  margin: 8px 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+#latestList {
+  display: grid;
+  gap: 12px;
+}
+.latest-state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+.latest-state p {
+  margin: 0;
+}
+.latest-state-action {
+  width: auto;
+  text-decoration: none;
+}
+/* Fixed height so replacing the skeleton with cards does not shift layout. */
+.latest-skeleton {
+  display: grid;
+  gap: 10px;
+  min-height: 132px;
+  align-content: center;
+  padding: 18px 20px;
+}
+.latest-skeleton-line {
+  display: block;
+  height: 12px;
+  width: 72%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 37%, #f0f0f0 63%);
+  background-size: 400% 100%;
+  animation: latest-shimmer 1.4s ease infinite;
+}
+.latest-skeleton-line.is-title {
+  width: 45%;
+  height: 14px;
+}
+.latest-skeleton-line.is-short {
+  width: 30%;
+}
+@keyframes latest-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .latest-skeleton-line {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .latest-search-row {
+    flex-direction: column;
+  }
+  .latest-search-button {
+    width: 100%;
+  }
+}

@@ -50,6 +50,9 @@
       openUrl: card.canonicalOpenUrl,
       destinationSummary: card.safeDestinationSummary.displayValue,
       clickCount: card.aggregateTotalClicks,
+      // Create responses only: the link works but is kept out of Latest
+      // Links and search because its destination looks private.
+      discoveryWithheld: card.publicDiscovery === "withheld",
       source: "created",
     });
   }

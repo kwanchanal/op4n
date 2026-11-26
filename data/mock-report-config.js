@@ -1,4 +1,4 @@
-// Deterministic report responses for Prototype Cleanup only.
+// Deterministic MOCK report responses for the mock adapter only.
 // A success state is simulated locally and is never delivered to an Admin or server.
 window.OP4N_MOCK_REPORT_CONFIG = Object.freeze({
   delayMs: 220,

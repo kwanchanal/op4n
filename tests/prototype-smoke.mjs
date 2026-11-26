@@ -62,7 +62,15 @@ const httpRuntimeConfig = {
   apiBaseUrl: fakeApiBase,
   shortLinkHost: "staging.op4n.me",
 };
-const fakeApi = { requests: [], reports: [], nextStatus: 201 };
+const fakeApi = { requests: [], reports: [], reads: [], nextStatus: 201 };
+const fakePublicCard = {
+  aggregateTotalClicks: 7,
+  canonicalCode: "PUBLIC0001",
+  canonicalOpenUrl: "https://staging.op4n.me/PUBLIC0001",
+  canonicalShortUrl: "https://staging.op4n.me/PUBLIC0001",
+  displayTitle: "Public smoke",
+  safeDestinationSummary: { origin: "https://example.com", path: "/docs", displayValue: "https://example.com/docs?…" },
+};
 const fakeCard = {
   aggregateTotalClicks: 0,
   canonicalCode: "HTTPCODE",
@@ -94,6 +102,18 @@ async function handlePausedRequest({ requestId, request }) {
   if (url.pathname.startsWith("/__fake-api/") && url.pathname.endsWith("/reports")) {
     fakeApi.reports.push({ url: request.url, headers: request.headers, postData: request.postData });
     return fulfill(requestId, 202, "application/json", JSON.stringify({ accepted: true, receiptId: "abcdef12-3456-4789-8abc-def012345678" }));
+  }
+  if (url.pathname.startsWith("/__fake-api/") && request.method === "GET") {
+    fakeApi.reads.push(request.url);
+    if (url.pathname.endsWith("/api/v1/links")) {
+      return fulfill(requestId, 200, "application/json", JSON.stringify({ items: [fakePublicCard] }));
+    }
+    if (url.pathname.endsWith("/api/v1/link-lookup")) {
+      const found = url.searchParams.get("input") === fakePublicCard.canonicalCode;
+      return fulfill(requestId, found ? 200 : 404, "application/json", JSON.stringify(found
+        ? fakePublicCard
+        : { error: { code: "LINK_NOT_FOUND", message: "No public link matches this request.", requestId: "smoke-request-0002" } }));
+    }
   }
   if (url.pathname.startsWith("/__fake-api/")) {
     fakeApi.requests.push({ url: request.url, method: request.method, headers: request.headers, postData: request.postData });
@@ -711,7 +731,145 @@ assert(httpReport.prototype === false && fakeApi.reports.length === 1 && sentRep
 assert(JSON.stringify(JSON.parse(sentReport.postData)) === JSON.stringify({ reasonCategory: "malware", detail: "Download prompts" }), "http Report sends only the category and detail");
 assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4/.test(header(sentReport.headers, "Idempotency-Key") || ""), "http Report sends a UUID Idempotency-Key");
 assert(httpReport.status.includes("we received your report (Ref abcdef12)") && !/simulated|prototype/i.test(httpReport.status + httpReport.description), "http Report confirms receipt without prototype wording");
+
+// ---- Latest Links and exact search, http adapter (Orders 63, 69, 72-78) ----
+const latestUrl = `http://127.0.0.1:${sitePort}/latest.html`;
+await send("Page.navigate", { url: latestUrl });
+await sleep(900);
+const httpLatest = await evaluate(`({
+  cards: [...document.querySelectorAll('#latestList .public-link-card')].map((card) => ({
+    short: card.querySelector('.link-short-url').textContent.trim(),
+    summary: card.querySelector('.link-url').textContent.trim(),
+    open: card.querySelector('.guest-action-button.open-destination-btn')?.getAttribute('href'),
+  })),
+  html: document.body.innerHTML,
+})`);
+assert(fakeApi.reads.some((item) => item === `${fakeApiBase}/api/v1/links`), "Latest Links reads GET /api/v1/links through the http adapter");
+assert(httpLatest.cards.length === 1 && httpLatest.cards[0].short === "https://staging.op4n.me/PUBLIC0001", "http Latest Links renders the API cards");
+assert(httpLatest.cards[0].summary === "https://example.com/docs?…" && httpLatest.cards[0].open === fakePublicCard.canonicalOpenUrl, "public card shows the safe summary and opens through canonicalOpenUrl");
+const readsBeforePreviews = fakeApi.reads.length + fakeApi.requests.length + fakeApi.reports.length;
+await evaluate(`(async () => {
+  for (const button of document.querySelectorAll('#latestList [data-access="registered-preview"]')) {
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    document.querySelector('#capabilitySignup').click();
+    document.querySelector('#capabilityNotNow').click();
+  }
+})()`);
+await sleep(200);
+assert(fakeApi.reads.length + fakeApi.requests.length + fakeApi.reports.length === readsBeforePreviews, "clicking every Registered preview and Sign Up sends zero network requests");
+await evaluate(`(() => {
+  const input = document.querySelector('#searchInput');
+  input.value = 'https://staging.op4n.me/PUBLIC0001';
+  document.querySelector('#searchForm').requestSubmit();
+})()`);
+await sleep(500);
+const httpSearch = await evaluate(`({
+  result: document.querySelector('#searchResult .link-short-url')?.textContent.trim(),
+  url: location.href,
+})`);
+assert(fakeApi.reads.some((item) => item === `${fakeApiBase}/api/v1/link-lookup?input=PUBLIC0001`), "search sends the normalized code to GET /api/v1/link-lookup");
+assert(httpSearch.result === "https://staging.op4n.me/PUBLIC0001" && httpSearch.url === latestUrl, "http search renders the card and never writes the query to the page URL");
+await evaluate(`(() => {
+  document.querySelector('#searchInput').value = 'ZZZZZZZZZZ';
+  document.querySelector('#searchForm').requestSubmit();
+})()`);
+await sleep(500);
+assert((await evaluate(`document.querySelector('#searchResult').textContent`)).includes("No public link matches staging.op4n.me/ZZZZZZZZZZ."), "http LINK_NOT_FOUND shows the no-result state");
 await send("Fetch.disable");
+
+// ---- Latest Links and exact search, mock adapter ----
+const latestState = (query) => evaluate(`(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  return {
+    h1: document.querySelector('h1')?.textContent.trim(),
+    robots: document.querySelector('meta[name="robots"]')?.content,
+    navCurrent: document.querySelector('.nav-link[aria-current="page"]')?.textContent.trim(),
+    busy: document.querySelector('#latestList').getAttribute('aria-busy'),
+    skeletons: document.querySelectorAll('#latestList .latest-skeleton').length,
+    cards: document.querySelectorAll('#latestList .public-link-card').length,
+    state: document.querySelector('#latestList .latest-state')?.dataset.state || null,
+    text: document.querySelector('#latestList').textContent.replace(/\\s+/g, ' ').trim(),
+    action: document.querySelector('#latestList .latest-state-action')?.getAttribute('href') || document.querySelector('#latestList .latest-state-action')?.tagName || null,
+  };
+})()`);
+await send("Page.navigate", { url: `${latestUrl}?latest=slow` });
+await sleep(400);
+const loadingLatest = await latestState();
+assert(loadingLatest.skeletons === 3 && loadingLatest.busy === "true", "Latest Links shows three skeleton cards with aria-busy while loading");
+assert(loadingLatest.h1 === "Latest Links" && loadingLatest.robots === "noindex, nofollow", "latest.html has the Latest Links heading and noindex, nofollow");
+assert(String(loadingLatest.navCurrent).endsWith("See All Created Links"), "the sidebar marks See All Created Links as the current page");
+await sleep(1200);
+const loadedLatest = await latestState();
+assert(loadedLatest.cards === 4 && loadedLatest.busy === "false" && loadedLatest.skeletons === 0, "Latest Links replaces the skeleton with the mock cards");
+await send("Page.navigate", { url: `${latestUrl}?latest=empty` });
+await sleep(600);
+const emptyLatest = await latestState();
+await send("Page.navigate", { url: `${latestUrl}?latest=error` });
+await sleep(600);
+const errorLatest = await latestState();
+await send("Page.navigate", { url: `${latestUrl}?latest=paused` });
+await sleep(600);
+const pausedLatest = await latestState();
+assert(emptyLatest.state === "empty" && emptyLatest.text.includes("No public links yet.") && emptyLatest.action === "index.html#linkUrl", "an empty list shows the empty state with Make a link");
+assert(errorLatest.state === "error" && errorLatest.action === "BUTTON" && errorLatest.text.includes("(Ref mock-pub)"), "a failed list shows an error with Retry and a reference");
+assert(pausedLatest.state === "paused" && pausedLatest.text.includes("temporarily paused"), "a paused list shows the paused state");
+assert(new Set([emptyLatest.text, errorLatest.text, pausedLatest.text]).size === 3, "empty, error, and paused states use different text");
+
+await send("Page.navigate", { url: latestUrl });
+await sleep(600);
+const searchFor = (value, wait = 450) => evaluate(`(async () => {
+  const input = document.querySelector('#searchInput');
+  input.value = ${JSON.stringify(value)};
+  document.querySelector('#searchForm').requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, ${wait}));
+  return {
+    error: document.querySelector('#searchError').textContent,
+    invalid: input.getAttribute('aria-invalid'),
+    value: input.value,
+    state: document.querySelector('#searchResult .latest-state')?.dataset.state || null,
+    cardShort: document.querySelector('#searchResult .public-link-card .link-short-url')?.textContent.trim() || null,
+    text: document.querySelector('#searchResult').textContent.replace(/\\s+/g, ' ').trim(),
+    busy: document.querySelector('#searchResult').getAttribute('aria-busy'),
+    button: document.querySelector('#searchSubmit').textContent,
+    disabled: document.querySelector('#searchSubmit').disabled,
+    url: location.href,
+  };
+})()`);
+const invalidSearch = await searchFor("pad thai", 50);
+assert(invalidSearch.error.includes("op4n.me/PL2TSH5") && invalidSearch.invalid === "true" && invalidSearch.state === null && !invalidSearch.cardShort, "invalid search input shows an inline message and sends no lookup");
+const foundSearch = await searchFor("https://op4n.me/SHOES01");
+assert(foundSearch.cardShort === "https://op4n.me/SHOES01" && foundSearch.text.includes("products/running-shoes?…"), "an exact match renders the shared public card");
+assert(foundSearch.url === latestUrl, "search never changes the page URL");
+const noResult = await searchFor("op4n.me/NOPE00001");
+assert(noResult.state === "no-result" && noResult.text.includes("No public link matches op4n.me/NOPE00001.") && noResult.value === "op4n.me/NOPE00001", "no match shows the no-result state and keeps the input");
+const unavailableSearch = await searchFor("OFFLINE01");
+assert(unavailableSearch.state === "unavailable" && unavailableSearch.text.includes("This short link is unavailable.") && unavailableSearch.text.includes("support@op4n.com"), "a disabled code shows the unavailable state with support contact");
+assert(!/disabled|report|moderat|safety/i.test(unavailableSearch.text.replace("This short link is unavailable.", "")), "the unavailable state reveals no reason");
+const errorSearch = await searchFor("ERROR0001");
+assert(errorSearch.state === "error" && errorSearch.text.includes("Search is temporarily unavailable") && errorSearch.text.includes("(Ref mock-pub)"), "a service error is distinct and shows a reference");
+const slowSearch = await searchFor("SLOW00001", 200);
+assert(slowSearch.busy === "true" && slowSearch.disabled && slowSearch.button === "Searching…" && slowSearch.value === "SLOW00001" && !slowSearch.text, "loading disables Find, keeps the input, and clears the previous result");
+await sleep(1300);
+assert((await evaluate(`document.querySelector('#searchResult .link-short-url')?.textContent.trim()`)) === "https://op4n.me/SLOW00001", "the loading state ends with the result");
+const limited = await searchFor("LIMIT0001");
+assert(limited.text.includes("search again in about 2 minutes") && limited.disabled, "429 shows the wait time and pauses search");
+
+await send("Page.navigate", { url: `http://127.0.0.1:${sitePort}/index.html#linkUrl` });
+await sleep(700);
+assert((await evaluate(`document.activeElement?.id`)) === "linkUrl", "Make a link (index.html#linkUrl) focuses the URL field");
+const withheldCreate = await evaluate(`(async () => {
+  const input = document.querySelector('#linkUrl');
+  input.value = 'https://example.com/reset?token=SECRET';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#linkForm').requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return { status: document.querySelector('#formStatus').textContent, pill: document.querySelector('[data-link-filter="created"]').textContent.trim() };
+})()`);
+assert(withheldCreate.status.includes("won’t appear in Latest Links or search because the destination looks private"), "a withheld creation explains that the link works but is not discoverable");
+assert(withheldCreate.pill === "Your new links", "the creation filter pill is renamed so it is not confused with Latest Links");
+const previewCopy = await evaluate(`[...document.querySelectorAll('[data-access="registered-preview"]')].map((item) => item.getAttribute('aria-label')).join('|') + document.body.textContent`);
+assert(!/Custom Slug|Prototype Cleanup|Premium|Upgrade|pricing|\$\d/i.test(previewCopy) && previewCopy.includes("Custom alias — Registered to unlock"), "Custom alias replaces Custom Slug and no Paid or cleanup wording remains");
 
 assert(exceptions.length === 0, "zero uncaught JavaScript exceptions");
 

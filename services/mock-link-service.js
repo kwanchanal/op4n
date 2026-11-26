@@ -45,6 +45,7 @@
       destinationSummary,
       clickCount: record.clickCount,
       pinned: Boolean(record.pinned),
+      discoveryWithheld: Boolean(record.discoveryWithheld),
       source: record.source,
     };
   }
@@ -102,6 +103,10 @@
 
     creationSequence += 1;
     const shortCode = `DEMO${String(creationSequence).padStart(3, "0")}`;
+    // Mock stand-in for the server's discovery screening (r1-discovery-v1):
+    // a secret-bearing query parameter withholds the link from discovery.
+    const discoveryWithheld = /[?&#](token|code|state|sig|signature|password|pwd|session|key)=/i
+      .test(request.destinationUrl);
     const response = {
       link: toCardModel({
         id: request.requestId,
@@ -110,6 +115,7 @@
         code: shortCode,
         shortUrl: `https://op4n.me/${shortCode}`,
         clickCount: scenario.clickCount,
+        discoveryWithheld,
         source: "mock-created"
       }),
       meta: {

@@ -1,0 +1,13 @@
+# Op4n.com indexing policy (docs/operations/r1-indexing-policy.md).
+# The home page and legal pages are indexable. Latest Links carries a noindex
+# meta tag, so it stays crawlable here (a blocked page's noindex is never
+# seen). Admin is blocked outright. discover.html and showcase/ follow the launch decision in
+# Order 95 (PENDING).
+User-agent: *
+Disallow: /admin
+Disallow: /admin.html
+Disallow: /config/
+Disallow: /data/
+Disallow: /services/
+
+Sitemap: https://op4n.com/sitemap.xml
