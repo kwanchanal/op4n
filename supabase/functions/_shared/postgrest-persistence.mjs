@@ -1,4 +1,6 @@
-export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl = fetch }) {
+import { TIMEOUTS } from "./timeouts.mjs";
+
+export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl = fetch, timeoutMs = TIMEOUTS.DATABASE_MS }) {
   if (!supabaseUrl || !secretKey) {
     throw new Error("Database persistence configuration is incomplete.");
   }
@@ -78,6 +80,14 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
     async getFeatureFlags() {
       return callRpc("get_feature_flags_v1", {});
     },
+    async healthReadiness() {
+      return callRpc("health_readiness_v1", {});
+    },
+    async ensureSyntheticLink(input) {
+      return callRpc("ensure_synthetic_link_v1", {
+        p_code: input.code, p_destination: input.destination, p_origin: input.origin, p_fingerprint: input.fingerprint,
+      });
+    },
     async resolveRedirect(canonicalCode) {
       return callRpc("resolve_canonical_redirect_v1", { p_code: canonicalCode });
     },
@@ -139,6 +149,8 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
           apikey: secretKey,
         },
         body: JSON.stringify(requestBody),
+        // One attempt per request; a hung database surfaces as 503.
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
 

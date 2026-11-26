@@ -1,0 +1,4 @@
+Contact: mailto:support@op4n.com
+Expires: 2027-11-27T00:00:00.000Z
+Preferred-Languages: en, th
+Canonical: https://op4n.com/.well-known/security.txt

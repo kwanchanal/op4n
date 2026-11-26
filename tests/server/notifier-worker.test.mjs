@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createLogger } from "../../supabase/functions/_shared/log.mjs";
 import { buildMime, renderDigest, runDigest } from "../../workers/notifier/src/index.mjs";
 
 const ENV = {
@@ -27,7 +28,12 @@ function fakeApi({ claim, completeStatus = 200, exhausted = 0 }) {
   };
   return { calls, fetchImpl };
 }
-const quietLog = () => { const lines = []; return { lines, info: (l) => lines.push(l), error: (l) => lines.push(l) }; };
+// The real structured logger writing into memory.
+const quietLog = () => {
+  const lines = [];
+  const sink = { info: (line) => lines.push(line), warn: (line) => lines.push(line), error: (line) => lines.push(line) };
+  return { ...createLogger({ service: "notifier-worker", environment: "staging", sink }), lines };
+};
 
 test("ten reports and a safety block become one digest email", async () => {
   const sent = [];

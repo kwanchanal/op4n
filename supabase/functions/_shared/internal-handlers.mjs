@@ -221,3 +221,110 @@ export function createNotificationCompleteHandler({ credential, persistence, req
     return json(200, { updated: Number(result?.updated ?? 0), exhausted: Number(result?.exhausted ?? 0) }, id);
   };
 }
+
+// ── Health and synthetic monitoring (Order 81) ─────────────────────────
+//   GET  /api/v1/internal/health/live       (getEnvironmentLiveness)
+//   GET  /api/v1/internal/health/ready      (getEnvironmentReadiness)
+//   POST /api/v1/internal/synthetic/ensure  (ensureSyntheticLink)
+// Service credential only. Responses carry no project reference or secret.
+
+export const SYNTHETIC_CODE = "SYNTHETIC1";
+
+function authorize(request, credential, requestId, method) {
+  if (request.method !== method) {
+    return error(405, "VALIDATION_ERROR", "The request method is not supported.", requestId, { Allow: method });
+  }
+  if (typeof credential !== "string" || credential.length < 32) {
+    return error(503, "DEPENDENCY_UNAVAILABLE", "A required service is temporarily unavailable.", requestId, { "Retry-After": "1" });
+  }
+  const authorization = request.headers.get("Authorization") || "";
+  const presented = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(presented, credential)) {
+    return error(401, "UNAUTHORIZED", "The request is not authorized.", requestId);
+  }
+  return null;
+}
+
+export function createHealthHandlers({
+  credential,
+  persistence,
+  environment,
+  releaseSha,
+  configVersion,
+  environmentReady,
+  frontendOrigin,
+  destinationHmacKey,
+  hmac,
+  requestId = () => crypto.randomUUID(),
+}) {
+  const identity = () => ({
+    environment,
+    releaseSha: /^[0-9a-f]{40}$/.test(releaseSha || "") ? releaseSha : "0".repeat(40),
+    configVersion: configVersion || "unset",
+  });
+
+  return Object.freeze({
+    // Answers without touching the database.
+    async live(request) {
+      const id = requestId();
+      const denied = authorize(request, credential, id, "GET");
+      if (denied) return denied;
+      return json(200, { status: "live", ...identity() }, id);
+    },
+
+    async ready(request) {
+      const id = requestId();
+      const denied = authorize(request, credential, id, "GET");
+      if (denied) return denied;
+      const checks = [{ name: "router", status: "ready" }];
+      const environmentOk = ["staging", "production"].includes(environment) &&
+        /^[0-9a-f]{40}$/.test(releaseSha || "") && environmentReady === true;
+      checks.push({ name: "environment", status: environmentOk ? "ready" : "not_ready" });
+      let database = null;
+      try {
+        database = await persistence.healthReadiness();
+      } catch {
+        database = null;
+      }
+      checks.push({ name: "database", status: database?.database === true ? "ready" : "not_ready" });
+      checks.push({ name: "schema", status: database?.schema === true ? "ready" : "not_ready" });
+      let lookup = null;
+      try {
+        lookup = database ? await persistence.resolveRedirect(SYNTHETIC_CODE) : null;
+      } catch {
+        lookup = null;
+      }
+      checks.push({ name: "redirectLookup", status: lookup?.decision === "redirect" ? "ready" : "not_ready" });
+      if (checks.every((check) => check.status === "ready")) {
+        return json(200, { status: "ready", ...identity(), checks }, id);
+      }
+      return json(503, {
+        error: { code: "DEPENDENCY_UNAVAILABLE", message: "The environment is not ready.", requestId: id },
+        readiness: { status: "not_ready", checks },
+      }, id, { "Retry-After": "30" });
+    },
+
+    // Idempotently creates this environment's synthetic link, which redirects
+    // to the frontend so monitors exercise the whole redirect path.
+    async ensureSynthetic(request) {
+      const id = requestId();
+      const denied = authorize(request, credential, id, "POST");
+      if (denied) return denied;
+      if (!/^https:\/\/[^/?#]+$/.test(frontendOrigin || "")) {
+        return error(503, "DEPENDENCY_UNAVAILABLE", "A required service is temporarily unavailable.", id, { "Retry-After": "1" });
+      }
+      const destination = `${frontendOrigin}/?monitor=synthetic`;
+      try {
+        const result = await persistence.ensureSyntheticLink({
+          code: SYNTHETIC_CODE,
+          destination,
+          origin: frontendOrigin,
+          fingerprint: await hmac(destinationHmacKey, destination),
+        });
+        return json(200, { canonicalCode: SYNTHETIC_CODE, created: result?.kind === "created" }, id);
+      } catch {
+        return error(503, "DEPENDENCY_UNAVAILABLE", "A required service is temporarily unavailable.", id, { "Retry-After": "1" });
+      }
+    },
+  });
+}

@@ -21,12 +21,6 @@
           href: "latest.html"
         },
         {
-          id: "discover",
-          label: "Discover",
-          icon: "explore",
-          locked: true
-        },
-        {
           id: "trackings",
           label: "Trackings",
           icon: "insights",

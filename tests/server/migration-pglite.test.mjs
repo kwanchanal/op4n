@@ -24,6 +24,7 @@ async function database() {
     ["202611260001_notification_outbox.sql", "op4n_purge_sent_notifications"],
     ["202611260002_admin_moderation.sql", null],
     ["202611270001_public_discovery.sql", null],
+    ["202611270002_health_synthetic.sql", null],
   ]) {
     const sql = await migration(name);
     if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
@@ -590,4 +591,32 @@ test("Latest Links uses the partial index with 10,000 links", async () => {
   const p95 = durations[Math.ceil(durations.length * 0.95) - 1];
   console.log(`latest-100 PGlite p95 ${p95.toFixed(1)} ms over 10,000 links`);
   assert.ok(p95 < 300, `p95 ${p95} ms`);
+});
+
+test("public-search allows 300 lookups per identity per day and rejects the 301st", async () => {
+  const db = await database();
+  const windows = JSON.stringify([{ seconds: 86400, limit: 300 }]);
+  const consume = () => value(db, "select public.consume_rate_limit_v1('staging','public-search',$1,$2::jsonb)", ["e".repeat(64), windows]);
+  for (let attempt = 1; attempt <= 300; attempt += 1) {
+    assert.equal((await consume()).decision, "allowed", `lookup ${attempt}`);
+  }
+  const rejected = await consume();
+  assert.equal(rejected.decision, "limited");
+  assert.ok(rejected.retryAfter >= 1);
+});
+
+test("the synthetic link redirects, is never counted, and is never discoverable", async () => {
+  const db = await database();
+  const ensure = () => value(db, "select public.ensure_synthetic_link_v1('SYNTHETIC1','https://staging.op4n.com/?monitor=synthetic','https://staging.op4n.com',$1)", ["9".repeat(64)]);
+  assert.equal((await ensure()).kind, "created");
+  assert.equal((await ensure()).kind, "exists");
+  assert.equal((await resolve(db, "SYNTHETIC1")).decision, "redirect");
+  assert.equal((await record(db, EVENT_A, "SYNTHETIC1")).kind, "accepted");
+  assert.equal(Number(await value(db, "select count(*) from public.click_aggregates")), 0, "no click counted");
+  assert.equal(Number(await value(db, "select count(*) from public.click_events")), 0);
+  assert.deepEqual(await value(db, "select public.public_link_lookup_v1('SYNTHETIC1','https://staging.op4n.me')"), { kind: "not_found" });
+  assert.deepEqual(await value(db, "select public.list_public_links_v1('https://staging.op4n.me', 100)"), { items: [] });
+  assert.deepEqual(await value(db, "select public.health_readiness_v1()"), { database: true, schema: true });
+  await createLink(db);
+  await assert.rejects(value(db, "select public.ensure_synthetic_link_v1($1,'https://staging.op4n.com/','https://staging.op4n.com',$2)", [CODE, "8".repeat(64)]), /already used/);
 });

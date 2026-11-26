@@ -527,7 +527,7 @@
       const subject = encodeURIComponent("OP4N.ME contact");
       const body = encodeURIComponent(`Email: ${email}\n\nMessage:\n${message}`);
       window.location.href =
-        `mailto:kwanchanok.phon@gmail.com?subject=${subject}&body=${body}`;
+        `mailto:support@op4n.com?subject=${subject}&body=${body}`;
     });
 
     if (!elements.adYouWord) return;

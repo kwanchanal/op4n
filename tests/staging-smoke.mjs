@@ -379,6 +379,38 @@ async function run() {
   }
   if (!configOk) failures.push("Staging frontend runtime config does not select the http adapter for this project");
 
+  // Order 81: health routes need the service credential; readiness proves the
+  // database, schema, and synthetic redirect lookup; the synthetic link
+  // redirects to the frontend, is never discoverable, and never counts.
+  const internal = `https://${ref}.supabase.co/functions/v1/op4n-api/api/v1/internal`;
+  const credential = process.env.INTERNAL_SERVICE_CREDENTIAL ?? "";
+  const anonymousLive = await fetch(`${internal}/health/live`);
+  await anonymousLive.body?.cancel();
+  if (anonymousLive.status !== 401) failures.push(`health/live without the credential returned ${anonymousLive.status}`);
+  if (credential.length >= 32) {
+    const auth = { Authorization: `Bearer ${credential}` };
+    const ensured = await fetch(`${internal}/synthetic/ensure`, { method: "POST", headers: auth });
+    await ensured.body?.cancel();
+    if (ensured.status !== 200) failures.push(`synthetic ensure returned ${ensured.status}`);
+    const live = await fetch(`${internal}/health/live`, { headers: auth });
+    const liveBody = await live.json().catch(() => null);
+    if (live.status !== 200 || liveBody?.status !== "live" || liveBody?.releaseSha !== releaseSha) failures.push("health/live does not report this release");
+    if (JSON.stringify(liveBody ?? {}).includes(ref)) failures.push("health/live exposes the project reference");
+    const ready = await fetch(`${internal}/health/ready`, { headers: auth });
+    const readyBody = await ready.json().catch(() => null);
+    if (ready.status !== 200) failures.push(`health/ready returned ${ready.status}: ${JSON.stringify(readyBody?.readiness?.checks ?? [])}`);
+    const synthetic = await fetch(`${SHORT_HOST_ORIGIN}/SYNTHETIC1`, { redirect: "manual" });
+    await synthetic.body?.cancel();
+    if (synthetic.status !== 302 || !String(synthetic.headers.get("location")).startsWith(`${STAGING_ORIGIN}/`)) {
+      failures.push(`synthetic redirect returned ${synthetic.status} to an unexpected host`);
+    }
+    const syntheticLookup = await fetch(`${endpoint.replace(/\/links$/, "/link-lookup")}?input=SYNTHETIC1`);
+    await syntheticLookup.body?.cancel();
+    if (syntheticLookup.status !== 404) failures.push("the synthetic link is publicly discoverable");
+  } else {
+    failures.push("INTERNAL_SERVICE_CREDENTIAL is not available to the smoke test");
+  }
+
   // Order 79: Staging is never indexable; Latest Links is served.
   const robots = await fetch(`${STAGING_ORIGIN}/robots.txt`, { cache: "no-store" }).catch(() => null);
   const robotsText = robots?.ok ? await robots.text() : "";
@@ -387,6 +419,18 @@ async function run() {
   await latestPage?.body?.cancel();
   if (latestPage?.status !== 200) failures.push(`Staging latest page returned ${latestPage?.status}`);
   if (!/noindex/.test(latestPage?.headers.get("x-robots-tag") ?? "")) failures.push("Staging pages do not send X-Robots-Tag: noindex");
+
+  // Order 88: security.txt is served; Order 95: Discover and Showcase are not.
+  const securityTxt = await fetch(`${STAGING_ORIGIN}/.well-known/security.txt`, { cache: "no-store" }).catch(() => null);
+  const securityText = securityTxt?.ok ? await securityTxt.text() : "";
+  if (!/^Contact: mailto:support@op4n\.com$/m.test(securityText) || !/^Expires: \d{4}-/m.test(securityText)) {
+    failures.push("security.txt is missing or invalid");
+  }
+  for (const path of ["/discover.html", "/showcase/hello/hello.js"]) {
+    const excluded = await fetch(`${STAGING_ORIGIN}${path}`, { cache: "no-store", redirect: "manual" }).catch(() => null);
+    const body = excluded ? await excluded.text() : "";
+    if (excluded?.status === 200 && !/<title>OP4N\.COM<\/title>[\s\S]*id="linkForm"/.test(body)) failures.push(`${path} is still served`);
+  }
 
   // Admin: no JWT is rejected by the deployed gate (proves it is configured,
   // not 503), and Supabase Auth refuses public sign-up.

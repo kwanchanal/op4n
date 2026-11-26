@@ -793,6 +793,10 @@ const latestState = (query) => evaluate(`(async () => {
     action: document.querySelector('#latestList .latest-state-action')?.getAttribute('href') || document.querySelector('#latestList .latest-state-action')?.tagName || null,
   };
 })()`);
+// Order 70: measure cumulative layout shift from skeleton to cards.
+const clsScript = await send("Page.addScriptToEvaluateOnNewDocument", {
+  source: `window.__cls = 0; new PerformanceObserver((list) => { for (const entry of list.getEntries()) if (!entry.hadRecentInput) window.__cls += entry.value; }).observe({ type: "layout-shift", buffered: true });`,
+});
 await send("Page.navigate", { url: `${latestUrl}?latest=slow` });
 await sleep(400);
 const loadingLatest = await latestState();
@@ -802,6 +806,13 @@ assert(String(loadingLatest.navCurrent).endsWith("See All Created Links"), "the 
 await sleep(1200);
 const loadedLatest = await latestState();
 assert(loadedLatest.cards === 4 && loadedLatest.busy === "false" && loadedLatest.skeletons === 0, "Latest Links replaces the skeleton with the mock cards");
+const cls = await evaluate(`window.__cls`);
+console.log(`Latest Links cumulative layout shift: ${cls.toFixed(4)}`);
+assert(cls < 0.1, "skeleton to content layout shift is under 0.1");
+await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: clsScript.result.identifier });
+assert((await evaluate(`document.querySelector('.site-footer a[href="mailto:support@op4n.com"]')?.textContent`)) === "support@op4n.com", "Latest Links footer shows support@op4n.com");
+const adminHtml = await (await fetch(`http://127.0.0.1:${sitePort}/admin.html`)).text();
+assert(/<meta name="robots" content="noindex, nofollow"/.test(adminHtml), "admin.html carries noindex, nofollow");
 await send("Page.navigate", { url: `${latestUrl}?latest=empty` });
 await sleep(600);
 const emptyLatest = await latestState();
