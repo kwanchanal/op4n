@@ -69,6 +69,7 @@ test("201 maps PublicLinkCard to the card view model without any destination", a
     openUrl: "https://staging.op4n.me/R1EXAMPLE",
     destinationSummary: "https://example.com",
     clickCount: 0,
+    discoveryWithheld: false,
     source: "created",
   });
   assert.equal(meta.replayed, true);
@@ -116,4 +117,11 @@ test("a non-HTTP apiBaseUrl is rejected at construction", () => {
   for (const apiBaseUrl of ["", "ftp://example.test", "javascript:alert(1)", undefined]) {
     assert.throws(() => createHttpLinkAdapter({ apiBaseUrl }), /apiBaseUrl/);
   }
+});
+
+test("a withheld create response marks the card model so the UI can explain it", async () => {
+  const { impl } = fakeFetch(201, { ...CARD, publicDiscovery: "withheld" });
+  const adapter = createHttpLinkAdapter({ apiBaseUrl: "https://api.example.test", fetchImpl: impl });
+  const { link } = await adapter.createLink(request);
+  assert.equal(link.discoveryWithheld, true);
 });

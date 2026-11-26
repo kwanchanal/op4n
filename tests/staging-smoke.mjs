@@ -379,6 +379,15 @@ async function run() {
   }
   if (!configOk) failures.push("Staging frontend runtime config does not select the http adapter for this project");
 
+  // Order 79: Staging is never indexable; Latest Links is served.
+  const robots = await fetch(`${STAGING_ORIGIN}/robots.txt`, { cache: "no-store" }).catch(() => null);
+  const robotsText = robots?.ok ? await robots.text() : "";
+  if (!/^User-agent: \*\nDisallow: \/\n?$/.test(robotsText)) failures.push("Staging robots.txt does not disallow everything");
+  const latestPage = await fetch(`${STAGING_ORIGIN}/latest`, { cache: "no-store" }).catch(() => null);
+  await latestPage?.body?.cancel();
+  if (latestPage?.status !== 200) failures.push(`Staging latest page returned ${latestPage?.status}`);
+  if (!/noindex/.test(latestPage?.headers.get("x-robots-tag") ?? "")) failures.push("Staging pages do not send X-Robots-Tag: noindex");
+
   // Admin: no JWT is rejected by the deployed gate (proves it is configured,
   // not 503), and Supabase Auth refuses public sign-up.
   const adminEndpoint = `https://${ref}.supabase.co/functions/v1/op4n-api/api/v1/admin/session`;

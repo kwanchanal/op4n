@@ -1,6 +1,6 @@
 // Op4n Admin tools (Feature Inventory Orders 57-60): reported-link queue, exact
-// link lookup, audited destination reveal, case triage/resolve, and audited
-// disable/restore. Every value from the API is rendered with textContent;
+// link lookup, audited destination reveal, case triage/resolve, audited
+// disable/restore, and the audited public-discovery override (Order 61). Every value from the API is rendered with textContent;
 // nothing here builds HTML from data. The full destination appears only after
 // an explicit, audited Reveal.
 (function () {
@@ -144,14 +144,15 @@
 
   function renderRecord(record) {
     const destination = el("dd", { id: "recordDestination" }, [
-      el("span", { text: `${record.safeDestinationOrigin} (full URL hidden)` }),
+      el("span", { text: `${record.safeDestinationDisplay || record.safeDestinationOrigin} (full URL hidden)` }),
       el("button", { type: "button", className: "admin-link-button", text: "Reveal full destination (audited)", onclick: () => reveal(record.canonicalCode) }),
     ]);
     const facts = el("dl", { className: "admin-facts" }, [
       el("dt", { text: "Short link" }), el("dd", { text: `op4n.me/${record.canonicalCode}` }),
       el("dt", { text: "Title" }), el("dd", { text: record.title || "Untitled link" }),
       el("dt", { text: "Destination" }), destination,
-      el("dt", { text: "Status" }), el("dd", { text: `${record.lifecycleState} · safety ${record.safetyState} · discovery ${record.discoveryState}` }),
+      el("dt", { text: "Status" }), el("dd", { text: `${record.lifecycleState} · safety ${record.safetyState}` }),
+      el("dt", { text: "Public discovery" }), el("dd", { text: discoveryText(record) }),
       el("dt", { text: "Clicks" }), el("dd", { text: String(record.aggregateTotalClicks) }),
       el("dt", { text: "Reports" }), el("dd", { text: `${record.reportCount}: ${reasons(record.reportsByReason)}` }),
       el("dt", { text: "Created" }), el("dd", { text: when(record.createdAt) }),
@@ -164,8 +165,56 @@
       facts,
       record.openCase ? renderCaseActions(record.openCase) : null,
       renderModeration(record),
+      renderDiscovery(record),
       el("h3", { className: "admin-subhead", text: "Moderation history" }),
       history,
+    ]);
+  }
+
+  // ── Public discovery override (Order 61) ───────────────────────
+  function discoveryText(record) {
+    const shown = record.publiclyDiscoverable ? "Shown in Latest Links and search" : "Not shown in Latest Links or search";
+    const override = record.discoveryOverride ? ` · founder override: ${record.discoveryOverride}` : "";
+    return `${shown} · screening ${record.discoveryState} (${record.discoveryPolicyVersion})${override}`;
+  }
+
+  function renderDiscovery(record) {
+    if (record.lifecycleState === "deleted") return null;
+    const select = el("select", { id: "discoveryDecision" }, [
+      el("option", { value: "", text: "Choose" }),
+      el("option", { value: "eligible", text: "Allow in Latest Links and search" }),
+      el("option", { value: "withheld", text: "Keep out of Latest Links and search" }),
+      el("option", { value: "policy", text: "Use the screening result" }),
+    ]);
+    const note = el("textarea", { id: "discoveryNote", rows: "2", maxlength: "900", placeholder: "Why (required, Admin-only)" });
+    const status = el("p", { className: "form-status", role: "status" });
+    const apply = async () => {
+      if (!select.value || !note.value.trim()) {
+        status.textContent = "Choose an option and add a note.";
+        status.dataset.tone = "error";
+        (select.value ? note : select).focus();
+        return;
+      }
+      const result = await api.callAdmin(`/api/v1/admin/links/${encodeURIComponent(record.canonicalCode)}/discovery`, {
+        method: "POST",
+        body: { decision: select.value, note: note.value.trim() },
+      });
+      if (!result.ok) {
+        if (await handleAuthFailure(result)) return;
+        status.textContent = failureText(result, "The discovery setting could not be changed.");
+        status.dataset.tone = "error";
+        return;
+      }
+      await openRecord(record.canonicalCode);
+      api.setStatus(result.body.changed ? "Discovery setting changed." : "Discovery setting was already in place; nothing changed.");
+    };
+    return el("div", { className: "field admin-discovery" }, [
+      el("label", { for: "discoveryDecision", text: "Public discovery override" }),
+      select,
+      note,
+      el("p", { className: "admin-help", text: "Requires a sign-in within the last 15 minutes. Every change is recorded." }),
+      el("button", { type: "button", className: "admin-signout", text: "Apply", onclick: apply }),
+      status,
     ]);
   }
 

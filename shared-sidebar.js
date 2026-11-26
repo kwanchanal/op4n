@@ -15,6 +15,12 @@
       title: "Explore",
       items: [
         {
+          id: "latest",
+          label: "See All Created Links",
+          icon: "travel_explore",
+          href: "latest.html"
+        },
+        {
           id: "discover",
           label: "Discover",
           icon: "explore",
@@ -114,7 +120,7 @@
     });
 
     sidebar.querySelector("[data-signup-preview]")?.addEventListener("click", () => {
-      status.textContent = "Sign Up is not connected during Prototype Cleanup.";
+      status.textContent = "Accounts are coming soon.";
     });
   }
 

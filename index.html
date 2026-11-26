@@ -19,7 +19,7 @@
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=r1-batch-a" />
+    <link rel="stylesheet" href="styles.css?v=r1-batch-e" />
   </head>
   <body class="dashboard">
     <div class="top-banner">
@@ -86,7 +86,7 @@
 
           <section class="links" id="linksWorkspace" aria-label="Link cards">
             <div class="link-filter-bar" aria-label="Filter links">
-              <button class="link-filter-pill is-active" type="button" data-link-filter="created" aria-pressed="true">Created Link</button>
+              <button class="link-filter-pill is-active" type="button" data-link-filter="created" aria-pressed="true">Your new links</button>
             </div>
             <div id="linksList"></div>
           </section>
@@ -153,74 +153,6 @@
       </aside>
     </div>
 
-    <dialog class="capability-dialog" id="capabilityDialog" aria-labelledby="capabilityDialogTitle" aria-describedby="capabilityDialogDescription">
-      <button class="capability-dialog-close" type="button" id="capabilityDialogClose" aria-label="Close feature preview">
-        <span class="material-symbols-outlined" aria-hidden="true">close</span>
-      </button>
-      <p class="capability-dialog-label">
-        <span class="material-symbols-outlined" aria-hidden="true">lock</span>
-        Registered to unlock
-      </p>
-      <h2 id="capabilityDialogTitle">Feature preview</h2>
-      <p id="capabilityDialogDescription"></p>
-      <section class="qr-showcase" id="qrShowcase" aria-label="Non-live QR feature showcase" hidden>
-        <div class="qr-showcase-tabs" aria-label="QR showcase sections">
-          <button type="button" disabled aria-disabled="true">Preview</button>
-          <button type="button" disabled aria-disabled="true">Settings</button>
-        </div>
-        <div class="qr-placeholder" role="img" aria-label="Non-live QR placeholder; this image does not encode a link">
-          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
-          <strong>NON-LIVE<br />SAMPLE</strong>
-        </div>
-        <p class="qr-showcase-lock"><span class="material-symbols-outlined" aria-hidden="true">lock</span> Registered to unlock</p>
-        <ul id="qrShowcaseFeatures"></ul>
-        <button class="qr-download-disabled" type="button" disabled aria-disabled="true">Download QR Code</button>
-      </section>
-      <div class="capability-dialog-actions">
-        <button type="button" class="capability-secondary" id="capabilityNotNow">Not now</button>
-        <button type="button" class="capability-primary" id="capabilitySignup">Sign Up</button>
-      </div>
-    </dialog>
-
-    <dialog class="capability-dialog report-dialog" id="reportDialog" aria-labelledby="reportDialogTitle" aria-describedby="reportDialogDescription">
-      <button class="capability-dialog-close" type="button" id="reportDialogClose" aria-label="Close report form">
-        <span class="material-symbols-outlined" aria-hidden="true">close</span>
-      </button>
-      <p class="capability-dialog-label">
-        <span class="material-symbols-outlined" aria-hidden="true">flag</span>
-        Guest action
-      </p>
-      <h2 id="reportDialogTitle">Report this link</h2>
-      <p id="reportDialogDescription">Tell us why this public link should be reviewed. We read every report.</p>
-      <form class="report-form" id="reportForm" novalidate>
-        <div class="field">
-          <label for="reportCategory">What's wrong?</label>
-          <select id="reportCategory" name="reasonCategory" required aria-describedby="reportCategoryError">
-            <option value="">Choose a reason</option>
-            <option value="phishing">Phishing or fake login</option>
-            <option value="malware">Malware or harmful download</option>
-            <option value="child_safety">Child sexual abuse or exploitation</option>
-            <option value="illegal">Illegal content</option>
-            <option value="impersonation">Impersonation or trademark misuse</option>
-            <option value="abuse">Harassment, hate, or scam</option>
-            <option value="spam">Spam</option>
-            <option value="other">Something else</option>
-          </select>
-          <p class="field-error" id="reportCategoryError" aria-live="polite"></p>
-        </div>
-        <div class="field">
-          <label for="reportReason">Details (optional)</label>
-          <textarea id="reportReason" name="detail" rows="4" maxlength="1000" aria-describedby="reportReasonCount reportReasonError" placeholder="Anything that helps us review this link"></textarea>
-          <p class="field-hint report-count" id="reportReasonCount" aria-live="off">0 / 1000</p>
-          <p class="field-error" id="reportReasonError" aria-live="polite"></p>
-        </div>
-        <p class="report-status" id="reportStatus" role="status" aria-live="polite"></p>
-        <div class="capability-dialog-actions">
-          <button type="button" class="capability-secondary" id="reportCancel">Cancel</button>
-          <button type="submit" class="capability-primary" id="reportSubmit">Submit report</button>
-        </div>
-      </form>
-    </dialog>
 
     <script src="config/runtime-config.js?v=r1-order21"></script>
     <script src="data/mock-api-config.js?v=r1-batch-c"></script>
@@ -228,13 +160,14 @@
     <script src="data/qr-showcase-config.js?v=id25"></script>
     <script src="services/prototype-storage.js?v=id25"></script>
     <script src="services/destination-url-validation.js?v=r1-batch-c"></script>
-    <script src="services/http-link-service.js?v=r1-batch-a"></script>
-    <script src="services/mock-link-service.js?v=r1-batch-c"></script>
+    <script src="services/http-link-service.js?v=r1-batch-e"></script>
+    <script src="services/mock-link-service.js?v=r1-batch-e"></script>
     <script src="services/link-service.js?v=r1-order21"></script>
     <script src="services/mock-report-service.js?v=r1-batch-d"></script>
     <script src="services/http-report-service.js?v=r1-batch-d"></script>
     <script src="services/report-service.js?v=r1-batch-d"></script>
-    <script src="shared-sidebar.js?v=id25"></script>
-    <script src="app.js?v=r1-batch-d"></script>
+    <script src="shared-sidebar.js?v=r1-batch-e"></script>
+    <script src="public-card.js?v=r1-batch-e"></script>
+    <script src="app.js?v=r1-batch-e"></script>
   </body>
 </html>

@@ -186,6 +186,13 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         # The only file that differs from the verified artifact; it holds no secret.
         run: node tests/staging-runtime-config.mjs .ci-artifacts/site/config/runtime-config.js
+      - name: Keep Staging out of search engines
+        # Order 79: Staging is never indexable. Production serves the committed
+        # robots.txt and sitemap.xml unchanged.
+        run: |
+          printf 'User-agent: *\nDisallow: /\n' > .ci-artifacts/site/robots.txt
+          rm -f .ci-artifacts/site/sitemap.xml
+          printf '/*\n  X-Robots-Tag: noindex, nofollow\n' > .ci-artifacts/site/_headers
       - name: Publish the frontend artifact to Cloudflare Pages (Staging)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

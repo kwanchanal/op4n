@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Order 79: in-product discovery is not search-engine indexing. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Latest Links · OP4N.COM</title>
+    <meta name="description" content="Recently created public op4n.me links." />
+    <link rel="icon" type="image/svg+xml" href="favicon/op4n-star.svg" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200"
+    />
+    <style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+    <link rel="stylesheet" href="styles.css?v=r1-batch-e" />
+  </head>
+  <body class="dashboard latest-page">
+    <div class="top-banner">
+      <span class="banner-text">OP4N.COM</span>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+
+    <div class="app-shell is-ad-dismissed" id="appShell">
+      <aside class="sidebar" id="sidebar" data-openme-sidebar data-sidebar-active="latest"></aside>
+
+      <main class="main">
+        <div class="main-scroll">
+          <header class="topbar">
+            <div class="topbar-row topbar-row--menu">
+              <div class="topbar-actions">
+                <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Open navigation" aria-controls="sidebar">
+                  <span class="material-symbols-outlined">menu</span>
+                </button>
+              </div>
+            </div>
+            <div class="topbar-row">
+              <h1 class="page-title">Latest Links</h1>
+            </div>
+          </header>
+
+          <section class="intro-copy">
+            <p>The newest public links people made on Op4n.com.</p>
+          </section>
+
+          <section class="form-card latest-search" aria-labelledby="searchHeading">
+            <h2 class="sr-only" id="searchHeading">Find a link</h2>
+            <form class="link-entry-form" id="searchForm" novalidate autocomplete="off" role="search">
+              <div class="field">
+                <label for="searchInput">Find a link by short URL or code</label>
+                <div class="latest-search-row">
+                  <input id="searchInput" name="input" type="text" inputmode="url" spellcheck="false" autocapitalize="off"
+                    autocomplete="off" maxlength="256" aria-describedby="searchError searchHint" placeholder="op4n.me/PL2TSH5" />
+                  <button class="cta latest-search-button" type="submit" id="searchSubmit">Find</button>
+                </div>
+                <p class="field-hint" id="searchHint">Exact match only. Paste the full short link or just its code.</p>
+                <p class="field-error" id="searchError" aria-live="polite"></p>
+              </div>
+            </form>
+            <div class="latest-search-result" id="searchResult" aria-live="polite" aria-busy="false"></div>
+          </section>
+
+          <section class="links" aria-labelledby="latestHeading">
+            <h2 class="latest-section-title" id="latestHeading">Newest public links</h2>
+            <p class="sr-only" id="latestStatus" role="status" aria-live="polite"></p>
+            <div id="latestList" aria-busy="false"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="config/runtime-config.js?v=r1-order21"></script>
+    <script src="data/mock-public-links-config.js?v=r1-batch-e"></script>
+    <script src="data/mock-report-config.js?v=r1-batch-d"></script>
+    <script src="data/qr-showcase-config.js?v=id25"></script>
+    <script src="services/http-link-service.js?v=r1-batch-e"></script>
+    <script src="services/http-public-link-service.js?v=r1-batch-e"></script>
+    <script src="services/mock-public-link-service.js?v=r1-batch-e"></script>
+    <script src="services/public-link-service.js?v=r1-batch-e"></script>
+    <script src="services/mock-report-service.js?v=r1-batch-d"></script>
+    <script src="services/http-report-service.js?v=r1-batch-d"></script>
+    <script src="services/report-service.js?v=r1-batch-d"></script>
+    <script src="services/short-link-lookup.js?v=r1-batch-e"></script>
+    <script src="shared-sidebar.js?v=r1-batch-e"></script>
+    <script src="public-card.js?v=r1-batch-e"></script>
+    <script src="latest.js?v=r1-batch-e"></script>
+  </body>
+</html>
