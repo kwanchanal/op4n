@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLogger } from "../../supabase/functions/_shared/log.mjs";
-import { buildMime, renderDigest, runDigest } from "../../workers/notifier/src/index.mjs";
+import { buildMime, DAILY_CHECK_CRON, renderDigest, runDailyCheck, runDigest } from "../../workers/notifier/src/index.mjs";
+import { createOpsDailyCheckHandler } from "../../supabase/functions/_shared/internal-handlers.mjs";
+import { readFile } from "node:fs/promises";
 
 const ENV = {
   API_BASE_URL: "https://api.test/functions/v1/op4n-api",
@@ -83,4 +85,44 @@ test("the digest never contains destinations, query strings, fragments, or repor
   }
   assert.ok(!/\r\nBcc:/.test(mime), "no header injection");
   assert.match(text, /staging\.op4n\.me\/Abc123XYZ9Bccxyz/);
+});
+
+test("operational alerts render without codes or URLs and lead the subject", () => {
+  const { subject, text } = renderDigest({
+    entries: [
+      { kind: "ops_alert", alertCode: "quota_critical", alertDetail: "CRITICAL Edge Function invocations ~700000/month (140% of 500000)\r\nBcc: x@y.z", priority: "S1", count: 1, canonicalCode: null, firstAt: "2026-11-27T01:07:00Z", lastAt: "2026-11-27T01:07:00Z" },
+      { kind: "report", reasonCategory: "spam", priority: "S3", count: 2, canonicalCode: "Abc123XYZ9", firstAt: "2026-11-27T01:00:00Z", lastAt: "2026-11-27T01:01:00Z" },
+    ],
+    events: 3, environment: "staging", shortHost: "staging.op4n.me", adminUrl: "https://staging.op4n.com/admin",
+  });
+  assert.equal(subject, "[Op4n Staging] S1 1 operational alert and 2 moderation events");
+  assert.match(text, /S1  operational alert \(quota_critical\): CRITICAL Edge Function invocations/);
+  assert.ok(!/\r|\nBcc/.test(text.split("operational alert")[1].split("\n")[0]), "alert detail cannot inject lines");
+});
+
+test("the daily check runs on its own cron, calls the API once, and never throws", async () => {
+  const calls = [];
+  const summary = await runDailyCheck(ENV, {
+    fetchImpl: async (url, init) => { calls.push([url, init.headers.Authorization]); return Response.json({ alertsQueued: ["quota_warning"] }); },
+    log: quietLog(),
+  });
+  assert.deepEqual(summary, { alertsQueued: ["quota_warning"] });
+  assert.deepEqual(calls, [[`${ENV.API_BASE_URL}/api/v1/internal/ops/daily-check`, `Bearer ${ENV.INTERNAL_SERVICE_CREDENTIAL}`]]);
+  const log = quietLog();
+  assert.equal(await runDailyCheck(ENV, { fetchImpl: async () => new Response("", { status: 503 }), log }), null);
+  assert.ok(log.lines.some((line) => line.includes("ops_daily_check_failed")));
+  const wrangler = await readFile(new URL("../../workers/notifier/wrangler.toml", import.meta.url), "utf8");
+  assert.ok(wrangler.includes(`"${DAILY_CHECK_CRON}"`), "the daily cron is configured");
+});
+
+test("the daily-check endpoint needs the service credential and returns counts only", async () => {
+  const credential = "c".repeat(64);
+  const handler = createOpsDailyCheckHandler({
+    credential, environment: "staging",
+    persistence: { opsDailyCheck: async ({ environment }) => ({ estimatedMonthlyInvocations: 690000, invocationPercent: 138, databasePercent: 2, staleS1Cases: 0, alertsQueued: ["quota_critical"], environment }) },
+  });
+  const denied = await handler(new Request("https://x/api/v1/internal/ops/daily-check", { method: "POST" }));
+  assert.equal(denied.status, 401);
+  const response = await handler(new Request("https://x/api/v1/internal/ops/daily-check", { method: "POST", headers: { Authorization: `Bearer ${credential}` } }));
+  assert.deepEqual(await response.json(), { estimatedMonthlyInvocations: 690000, invocationPercent: 138, databasePercent: 2, staleS1Cases: 0, alertsQueued: ["quota_critical"] });
 });
