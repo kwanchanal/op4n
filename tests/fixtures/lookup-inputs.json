@@ -1,0 +1,30 @@
+{
+  "shortHost": "staging.op4n.me",
+  "cases": [
+    { "name": "bare code", "input": "AbC123xyZ9", "code": "AbC123xyZ9" },
+    { "name": "bare uppercase code", "input": "ABCDEFGHIJ", "code": "ABCDEFGHIJ" },
+    { "name": "bare lowercase code", "input": "abcdefghij", "code": "abcdefghij" },
+    { "name": "surrounding whitespace", "input": "  AbC123xyZ9 \n", "code": "AbC123xyZ9" },
+    { "name": "host and code", "input": "staging.op4n.me/AbC123xyZ9", "code": "AbC123xyZ9" },
+    { "name": "https URL", "input": "https://staging.op4n.me/AbC123xyZ9", "code": "AbC123xyZ9" },
+    { "name": "uppercase host keeps code case", "input": "HTTPS://STAGING.OP4N.ME/AbC123xyZ9", "code": "AbC123xyZ9" },
+    { "name": "production host on staging", "input": "https://op4n.me/AbC123xyZ9", "code": null },
+    { "name": "other host", "input": "https://example.com/AbC123xyZ9", "code": null },
+    { "name": "http scheme", "input": "http://staging.op4n.me/AbC123xyZ9", "code": null },
+    { "name": "user info", "input": "https://user@staging.op4n.me/AbC123xyZ9", "code": null },
+    { "name": "port", "input": "https://staging.op4n.me:443/AbC123xyZ9", "code": null },
+    { "name": "trailing dot host", "input": "staging.op4n.me./AbC123xyZ9", "code": null },
+    { "name": "extra segment", "input": "staging.op4n.me/AbC123xyZ9/x", "code": null },
+    { "name": "trailing slash", "input": "staging.op4n.me/AbC123xyZ9/", "code": null },
+    { "name": "query string", "input": "https://staging.op4n.me/AbC123xyZ9?x=1", "code": null },
+    { "name": "fragment", "input": "https://staging.op4n.me/AbC123xyZ9#top", "code": null },
+    { "name": "percent-encoded slash", "input": "staging.op4n.me/AbC%2F123xyZ9", "code": null },
+    { "name": "too short code", "input": "Ab12", "code": null },
+    { "name": "punctuation in code", "input": "AbC-123xyZ9", "code": null },
+    { "name": "keyword phrase", "input": "pad thai", "code": null },
+    { "name": "destination URL", "input": "https://example.com/recipes", "code": null },
+    { "name": "javascript scheme", "input": "javascript:alert(1)", "code": null },
+    { "name": "empty", "input": "   ", "code": null },
+    { "name": "too long", "input": "staging.op4n.me/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "code": null }
+  ]
+}

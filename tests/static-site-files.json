@@ -36,6 +36,7 @@
   "services/mock-report-service.js",
   "services/prototype-storage.js",
   "services/report-service.js",
+  "services/short-link-lookup.js",
   "shared-sidebar.js",
   "showcase/brain-gym/favicon/logo.png",
   "showcase/brain-gym/index.html",

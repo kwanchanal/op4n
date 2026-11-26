@@ -40,10 +40,14 @@ test("uses explicit RPCs for reservation, release, and transactional creation", 
     title: null,
     fullDestinationUrl: "https://example.com/private?x=1#fragment",
     safeOrigin: "https://example.com",
+    safePath: "/private",
+    safeDisplayPath: "/private?…",
     destinationFingerprint: "c".repeat(64),
     fingerprintAlgorithm: "HMAC-SHA-256",
     fingerprintKeyVersion: "test-only-v1",
-    summaryPolicyVersion: "r1-origin-only-v1",
+    summaryPolicyVersion: "r1-safe-path-v1",
+    discoveryState: "eligible",
+    discoveryPolicyVersion: "r1-discovery-v1",
     canonicalBaseUrl: "https://staging.op4n.me",
   })).kind, "created");
 
@@ -52,7 +56,7 @@ test("uses explicit RPCs for reservation, release, and transactional creation", 
     [
       "begin_creation_idempotency_v1",
       "release_creation_idempotency_v1",
-      "create_guest_link_v1",
+      "create_guest_link_v2",
     ],
   );
   assert.ok(calls.every((call) => call.init.method === "POST"));
@@ -60,6 +64,8 @@ test("uses explicit RPCs for reservation, release, and transactional creation", 
   assert.equal(Object.hasOwn(bodies[0], "p_reservation_token"), false);
   assert.equal(bodies[1].p_reservation_token, scope.reservationToken);
   assert.equal(bodies[2].p_reservation_token, scope.reservationToken);
+  assert.equal(bodies[2].p_safe_display_path, "/private?…");
+  assert.equal(bodies[2].p_discovery_state, "eligible");
 });
 
 test("retries only the issued-code unique constraint", async () => {

@@ -1,3 +1,6 @@
+import { evaluateDiscovery } from "./discovery-policy.mjs";
+import { buildSafeSummary, SUMMARY_POLICY_VERSION } from "./safe-summary.mjs";
+
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 
 export const MAX_DESTINATION_LENGTH = 2048;
@@ -107,13 +110,15 @@ export function createDestinationPolicy({ shortLinkHosts = ["op4n.me"] } = {}) {
         return invalid("VALIDATION_ERROR", "The normalized destination URL is too long.");
       }
 
+      // Discovery screening (Order 61) and the public summary (Order 65)
+      // are computed once here so every caller uses the same policy result.
+      const discovery = evaluateDiscovery(parsed);
       return {
         valid: true,
         normalizedUrl: parsed.href,
-        publicSummary: Object.freeze({
-          origin: parsed.origin,
-          displayValue: parsed.origin,
-        }),
+        discovery,
+        summaryPolicyVersion: SUMMARY_POLICY_VERSION,
+        publicSummary: buildSafeSummary(parsed, { discoveryWithheld: !discovery.eligible }),
       };
     },
   });

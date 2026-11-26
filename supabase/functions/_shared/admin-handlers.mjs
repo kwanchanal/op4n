@@ -23,7 +23,7 @@ const unavailable = () => ({ ...fail(503, "DEPENDENCY_UNAVAILABLE", "A required 
 
 export function adminPathParams(pathname) {
   const path = String(pathname);
-  const link = path.match(/\/api\/v1\/admin\/links\/([^/]+)(?:\/(reveal|disable|restore))?$/);
+  const link = path.match(/\/api\/v1\/admin\/links\/([^/]+)(?:\/(reveal|disable|restore|discovery))?$/);
   const kase = path.match(/\/api\/v1\/admin\/cases\/([^/]+)\/transition$/);
   return { code: link?.[1] ?? null, caseId: kase?.[1] ?? null };
 }
@@ -142,6 +142,29 @@ export function createAdminHandlers({ persistence, destinationPolicy, destinatio
       if (result.failure) return result.failure;
       if (result.value?.kind !== "ok") return fail(404, "LINK_NOT_FOUND", "No open case matches this request.");
       return { status: 200, body: { caseId: caseId.toLowerCase(), caseState: result.value.caseState, auditRecorded: true } };
+    },
+
+    // POST /api/v1/admin/links/{code}/discovery {decision, note}
+    // Overrides the Order 61 screening result (eligible | withheld) or returns
+    // the link to its recorded policy result (policy). Audited.
+    async setDiscovery({ request, claims }) {
+      const code = codeFrom(request);
+      if (!code) return notFound();
+      const { body, failure } = await readJson(request);
+      if (failure) return failure;
+      if (!hasOnly(body, ["decision", "note"]) || !["eligible", "withheld", "policy"].includes(body.decision)) {
+        return invalid("decision", "must be eligible, withheld, or policy");
+      }
+      const note = typeof body.note === "string" ? body.note.trim() : "";
+      if (!note || note.length > 900) return invalid("note", "is required and must not exceed 900 characters");
+      const result = await call(() => persistence.adminSetDiscovery({ code, decision: body.decision, actor: actorOf(claims), detail: note }));
+      if (result.failure) return result.failure;
+      const kind = result.value?.kind;
+      if (kind !== "changed" && kind !== "unchanged") return notFound();
+      return {
+        status: 200,
+        body: { canonicalCode: code, discoveryOverride: result.value.discoveryOverride ?? null, changed: kind === "changed", auditRecorded: kind === "changed" },
+      };
     },
 
     // POST /api/v1/admin/links/{code}/disable | /restore {reasonCode, reasonDetail?}

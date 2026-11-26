@@ -22,7 +22,23 @@ export const DEFAULT_RATE_LIMITS = Object.freeze({
     ]),
     global: Object.freeze([Object.freeze({ seconds: 86400, limit: 1000 })]),
   }),
+  // Latest Links and the public card route.
+  "public-read": Object.freeze({
+    identity: Object.freeze([Object.freeze({ seconds: 60, limit: 120 })]),
+    global: Object.freeze([Object.freeze({ seconds: 60, limit: 6000 })]),
+  }),
+  // Exact lookup: the daily cap bounds code enumeration per identity.
+  "public-search": Object.freeze({
+    identity: Object.freeze([
+      Object.freeze({ seconds: 60, limit: 30 }),
+      Object.freeze({ seconds: 86400, limit: 300 }),
+    ]),
+    global: Object.freeze([Object.freeze({ seconds: 86400, limit: 50000 })]),
+  }),
 });
+
+// Every public class must be configured before the API starts.
+export const REQUIRED_RATE_LIMIT_CLASSES = Object.freeze(["public-create", "public-read", "public-search", "public-report"]);
 
 function validWindows(windows) {
   return Array.isArray(windows) && windows.length >= 1 && windows.length <= 8 &&
@@ -40,6 +56,9 @@ export function resolveRateLimits(overrideJson) {
     for (const [limitClass, definition] of Object.entries(parsed)) {
       limits[limitClass] = definition;
     }
+  }
+  for (const required of REQUIRED_RATE_LIMIT_CLASSES) {
+    if (!limits[required]) throw new Error(`Rate-limit class ${required} has no finite, valid configuration.`);
   }
   for (const [limitClass, definition] of Object.entries(limits)) {
     if (!/^[a-z][a-z0-9-]{1,63}$/.test(limitClass) || !validWindows(definition?.identity) ||

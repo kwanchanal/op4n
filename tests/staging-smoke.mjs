@@ -27,13 +27,49 @@ export function checkCreateResponse(status, headers, body) {
   if (headers.get("cache-control") !== "no-store") failures.push("create is not no-store");
   const card = body?.link ?? body;
   const keys = Object.keys(card ?? {}).sort();
-  if (JSON.stringify(keys) !== JSON.stringify(CARD_FIELDS)) {
-    failures.push("create response is not exactly the PublicLinkCard fields");
+  if (JSON.stringify(keys) !== JSON.stringify([...CARD_FIELDS, "publicDiscovery"].sort())) {
+    failures.push("create response is not exactly the PublicLinkCard fields plus publicDiscovery");
   }
+  if (!["eligible", "withheld"].includes(card?.publicDiscovery)) failures.push("create response has no valid publicDiscovery");
   if (!String(card?.canonicalShortUrl ?? "").startsWith("https://staging.op4n.me/")) {
     failures.push("short URL is not on staging.op4n.me");
   }
   return failures;
+}
+
+// A public card carries exactly the six fields and never query or fragment text.
+export function checkPublicCard(card) {
+  const failures = [];
+  if (JSON.stringify(Object.keys(card ?? {}).sort()) !== JSON.stringify(CARD_FIELDS)) {
+    failures.push("public card is not exactly the six PublicLinkCard fields");
+  }
+  const display = String(card?.safeDestinationSummary?.displayValue ?? "");
+  if (!/^https?:\/\/[^/?#@%]+(\/[^?#@%]*)?(\?…)?$/.test(display)) failures.push("public card summary exposes hidden URL parts");
+  return failures;
+}
+
+export function checkLatestLinks(status, headers, body, { includes, excludes }) {
+  const failures = [];
+  if (status !== 200) return [`Latest Links returned ${status}, expected 200`];
+  if (headers.get("cache-control") !== "no-store") failures.push("Latest Links is not no-store");
+  const items = Array.isArray(body?.items) ? body.items : null;
+  if (!items || items.length > 100) return [...failures, "Latest Links items are missing or over 100"];
+  items.forEach((item) => failures.push(...checkPublicCard(item).map((message) => `Latest Links: ${message}`)));
+  const codes = items.map((item) => item.canonicalCode);
+  if (includes && !codes.includes(includes)) failures.push("Latest Links does not include the new eligible link");
+  if (excludes && codes.includes(excludes)) failures.push("Latest Links includes a withheld link");
+  return failures;
+}
+
+export function checkLookup(status, body, expected) {
+  if (expected === "card") {
+    if (status !== 200) return [`lookup returned ${status}, expected 200`];
+    return checkPublicCard(body).map((message) => `lookup: ${message}`);
+  }
+  const code = { not_found: "LINK_NOT_FOUND", invalid: "VALIDATION_ERROR" }[expected];
+  const wantStatus = expected === "invalid" ? 400 : 404;
+  if (status !== wantStatus || body?.error?.code !== code) return [`lookup returned ${status} ${body?.error?.code}, expected ${wantStatus} ${code}`];
+  return body.canonicalCode || body.safeDestinationSummary ? ["lookup error carries card fields"] : [];
 }
 
 export function checkForeignPreflight(status, headers) {
@@ -127,8 +163,24 @@ function selfTest() {
     canonicalShortUrl: "https://staging.op4n.me/ABCDEFGH",
     displayTitle: "Staging smoke",
     safeDestinationSummary: { origin: "https://example.com", displayValue: "https://example.com" },
+    publicDiscovery: "eligible",
   };
+  const { publicDiscovery: _discovery, ...publicCard } = card;
+  const ok = new Headers({ "cache-control": "no-store" });
   const cases = [
+    [checkCreateResponse(201, good, publicCard).length === 0, false],
+    [checkPublicCard(publicCard).length === 0, true],
+    [checkPublicCard(card).length === 0, false],
+    [checkPublicCard({ ...publicCard, safeDestinationSummary: { displayValue: "https://example.com/p?token=x" } }).length === 0, false],
+    [checkPublicCard({ ...publicCard, safeDestinationSummary: { displayValue: "https://example.com/p?…" } }).length === 0, true],
+    [checkLatestLinks(200, ok, { items: [publicCard] }, { includes: "ABCDEFGH", excludes: "WITHHELD1" }).length === 0, true],
+    [checkLatestLinks(200, ok, { items: [publicCard] }, { includes: "OTHER123" }).length === 0, false],
+    [checkLatestLinks(200, ok, { items: [publicCard] }, { excludes: "ABCDEFGH" }).length === 0, false],
+    [checkLatestLinks(503, ok, null, {}).length === 0, false],
+    [checkLookup(200, publicCard, "card").length === 0, true],
+    [checkLookup(404, { error: { code: "LINK_NOT_FOUND" } }, "not_found").length === 0, true],
+    [checkLookup(404, { error: { code: "LINK_DISABLED" } }, "not_found").length === 0, false],
+    [checkLookup(400, { error: { code: "VALIDATION_ERROR" } }, "invalid").length === 0, true],
     [checkCreateResponse(201, good, card).length === 0, true],
     [checkCreateResponse(201, good, { link: card }).length === 0, true],
     [checkCreateResponse(503, good, card).length === 0, false],
@@ -230,6 +282,39 @@ async function run() {
     const head = await fetch(`${SHORT_HOST_ORIGIN}/${code}`, { method: "HEAD", redirect: "manual" });
     failures.push(...checkRedirect(head.status, head.headers, SMOKE_DESTINATION).map((item) => `HEAD ${item}`));
   }
+  // Public discovery: a link with a secret-bearing query works but is withheld
+  // from Latest Links and exact search; the eligible link appears in both.
+  const withheldCreate = await fetch(endpoint, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Origin: STAGING_ORIGIN },
+    body: JSON.stringify({ destinationUrl: `${SMOKE_DESTINATION}?token=smoke-not-secret`, title: "Withheld smoke" }),
+  });
+  const withheld = await withheldCreate.json().catch(() => null);
+  if (withheldCreate.status !== 201 || withheld?.publicDiscovery !== "withheld") {
+    failures.push(`secret-bearing destination returned ${withheldCreate.status} ${withheld?.publicDiscovery}, expected 201 withheld`);
+  }
+  if (typeof code === "string" && body?.publicDiscovery !== "eligible") failures.push("smoke destination was not eligible for discovery");
+  const latest = await fetch(endpoint, { headers: { Origin: STAGING_ORIGIN } });
+  failures.push(...checkLatestLinks(latest.status, latest.headers, await latest.json().catch(() => null), {
+    includes: code, excludes: withheld?.canonicalCode,
+  }));
+  const lookupUrl = (input) => `${endpoint.replace(/\/links$/, "/link-lookup")}?input=${encodeURIComponent(input)}`;
+  for (const [input, expected] of [
+    [`staging.op4n.me/${code}`, "card"],
+    [`${SHORT_HOST_ORIGIN}/${withheld?.canonicalCode}`, "not_found"],
+    ["ZZZZZZZZZZ", "not_found"],
+    ["op4n.me/ZZZZZZZZZZ", "invalid"],
+  ]) {
+    if (input.includes("undefined")) continue;
+    const response = await fetch(lookupUrl(input), { headers: { Origin: STAGING_ORIGIN } });
+    failures.push(...checkLookup(response.status, await response.json().catch(() => null), expected).map((item) => `${expected}: ${item}`));
+  }
+  if (typeof withheld?.canonicalCode === "string") {
+    const redirect = await fetch(`${SHORT_HOST_ORIGIN}/${withheld.canonicalCode}`, { redirect: "manual" });
+    await redirect.body?.cancel();
+    if (redirect.status !== 302) failures.push(`withheld link redirect returned ${redirect.status}, expected 302`);
+  }
+
   const unknown = await fetch(`${SHORT_HOST_ORIGIN}/ZZZZZZZZZZ`, { redirect: "manual" });
   failures.push(...checkNoRedirect(unknown.status, unknown.headers, 404).map((item) => `unknown code: ${item}`));
   const malformed = await fetch(`${SHORT_HOST_ORIGIN}/not/a/code`, { redirect: "manual" });
@@ -316,7 +401,7 @@ async function run() {
     console.error(`request id: ${created.headers.get("x-request-id") ?? "none"}`);
     process.exit(1);
   }
-  console.log("PASS Staging smoke: create, CORS, reports, redirect, spoof rejection, rate limit, runtime config, Admin gate, and disabled sign-up");
+  console.log("PASS Staging smoke: create, CORS, reports, redirect, discovery, Latest Links, lookup, spoof rejection, rate limit, runtime config, Admin gate, and disabled sign-up");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

@@ -223,10 +223,14 @@ export function createLinkHandler(dependencies) {
           title,
           fullDestinationUrl: destination.normalizedUrl,
           safeOrigin: destination.publicSummary.origin,
+          safePath: destination.publicSummary.path ?? null,
+          safeDisplayPath: destination.publicSummary.displayPath,
+          discoveryState: destination.discovery.eligible ? "eligible" : "withheld",
+          discoveryPolicyVersion: destination.discovery.version,
           destinationFingerprint,
           fingerprintAlgorithm: "HMAC-SHA-256",
           fingerprintKeyVersion,
-          summaryPolicyVersion: "r1-origin-only-v1",
+          summaryPolicyVersion: destination.summaryPolicyVersion,
           canonicalBaseUrl,
         });
       } catch {

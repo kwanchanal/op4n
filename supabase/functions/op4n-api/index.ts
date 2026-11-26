@@ -14,6 +14,7 @@ import {
   createNotificationCompleteHandler,
   createRedirectLookupHandler,
 } from "../_shared/internal-handlers.mjs";
+import { createPublicReadHandlers } from "../_shared/public-read-handlers.mjs";
 import { createReportHandler } from "../_shared/report-handler.mjs";
 import { routeOperation } from "../_shared/router.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
@@ -83,9 +84,18 @@ const allowedOrigins = localMode
 const rateLimitGate = selectRateLimitGate();
 const featureFlags = createFeatureFlagReader({ persistence });
 
+const canonicalBaseUrl = environment === "production" ? "https://op4n.me" : "https://staging.op4n.me";
+const publicRead = createPublicReadHandlers({
+  canonicalBaseUrl,
+  allowedOrigins,
+  persistence,
+  rateLimitGate,
+  featureFlags,
+});
+
 const createHandler = createLinkHandler({
   environment,
-  canonicalBaseUrl: environment === "production" ? "https://op4n.me" : "https://staging.op4n.me",
+  canonicalBaseUrl,
   allowedOrigins,
   destinationPolicy: createDestinationPolicy({
     shortLinkHosts: ["op4n.me", "staging.op4n.me"],
@@ -147,6 +157,10 @@ const handlers = {
   listAdminCases: adminRoute("listAdminCases", admin.listCases),
   transitionAdminCase: adminRoute("transitionAdminCase", admin.transitionCase, { methods: ["POST"] }),
   disableCanonicalLink: adminRoute("disableCanonicalLink", admin.moderate("disable"), { methods: ["POST"], requireRecentAuth: true }),
+  setAdminDiscovery: adminRoute("setAdminDiscovery", admin.setDiscovery, { methods: ["POST"], requireRecentAuth: true }),
+  listLatestPublicLinks: publicRead.listLatest,
+  getPublicLinkCard: publicRead.getCard,
+  exactLookupPublicLink: publicRead.exactLookup,
   restoreCanonicalLink: adminRoute("restoreCanonicalLink", admin.moderate("restore"), { methods: ["POST"], requireRecentAuth: true }),
   submitPublicLinkReport: createReportHandler({
     environment,
@@ -159,7 +173,7 @@ const handlers = {
 
 Deno.serve(async (request) => {
   // Unknown paths fall through to the create handler, which answers 405.
-  const operation = routeOperation(new URL(request.url).pathname) || "createGuestCanonicalLink";
+  const operation = routeOperation(new URL(request.url).pathname, request.method) || "createGuestCanonicalLink";
   try {
     const response = await handlers[operation](request);
     console.info(JSON.stringify({

@@ -138,9 +138,7 @@ paths:
             RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PublicLinkCard' }
-              examples:
-                created: { $ref: '#/components/examples/PublicLinkCardExample' }
+              schema: { $ref: '#/components/schemas/CreatedLinkCard' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '409': { $ref: '#/components/responses/IdempotencyRejected' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
@@ -673,6 +671,48 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/links/{code}/discovery:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    post:
+      tags: [Admin]
+      operationId: setAdminDiscovery
+      summary: Override or reset public-discovery screening for one link (audited)
+      description: >-
+        Corrects a false positive or negative from the discovery rules. The
+        change takes effect on the next Latest Links or lookup request. Requires
+        a sign-in within the last 15 minutes.
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-idempotency: naturally-idempotent
+      x-rate-limit-class: admin-mutation
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminDiscoveryRequest' }
+            example:
+              decision: eligible
+              note: Public product page; the long path segment is a slug.
+      responses:
+        '200':
+          description: Override applied or already in place.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDiscoveryResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/internal/redirect-lookup:
     post:
       tags: [Internal redirect]
@@ -1101,29 +1141,33 @@ components:
           description: Normalized HTTP/HTTPS origin with no user information.
         path:
           type: string
-          pattern: '^/[^?#]*$'
-          not:
-            pattern: '%(?:23|25|3[fF]|40)'
+          pattern: '^/[^?#%@]*$'
           maxLength: 256
           description: >-
-            Optional path approved or redacted by the versioned server policy.
-            Percent-encoded query/fragment/user-info separators, controls,
-            ambiguous encoding, and suspected sensitive tokens are prohibited.
+            Visible leading path under policy r1-safe-path-v1. Shown segments are
+            ordinary words (letters, digits, and - _ . only, no IDs, tokens, or
+            sensitive flow words, at most 3). When anything was cut the path
+            ends with the marker "/…". Absent when no path is shown.
         displayValue:
           type: string
           maxLength: 512
-          pattern: '^[^?#]+$'
-          not:
-            pattern: '@|%(?:23|25|3[fF]|40)'
+          pattern: '^https?://[^/?#@%]+(/[^?#@%]*)?(\?…)?$'
           readOnly: true
           description: >-
-            Server-constructed exact concatenation of normalized origin and the
-            approved/redacted path. It is never accepted from a request or
-            copied from an unvalidated database display value.
+            Server-constructed origin + visible path + marker. "/…" marks a
+            hidden path remainder; "?…" marks a hidden query string or
+            fragment. Query and fragment text never appear. Origin only when the
+            link is withheld from public discovery.
       examples:
         - origin: https://example.com
           path: /docs
           displayValue: https://example.com/docs
+        - origin: https://shop.example
+          path: /products/running-shoes
+          displayValue: https://shop.example/products/running-shoes?…
+        - origin: https://example.com
+          path: /…
+          displayValue: https://example.com/…
         - origin: https://example.com
           displayValue: https://example.com
     PublicLinkCard:
@@ -1158,6 +1202,66 @@ components:
           type: integer
           minimum: 0
           description: Public cumulative aggregate only.
+    CreatedLinkCard:
+      type: object
+      additionalProperties: false
+      description: >-
+        Create response (201 and idempotent replay): the six PublicLinkCard
+        fields plus publicDiscovery. "withheld" means the link works but is kept
+        out of Latest Links and search because its destination looks private
+        (discovery rules r1-discovery-v1).
+      required:
+        - canonicalCode
+        - displayTitle
+        - canonicalShortUrl
+        - canonicalOpenUrl
+        - safeDestinationSummary
+        - aggregateTotalClicks
+        - publicDiscovery
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        displayTitle: { type: string, minLength: 1, maxLength: 200 }
+        canonicalShortUrl:
+          type: string
+          format: uri
+          pattern: '^https://(op4n\.me|staging\.op4n\.me)/[A-Za-z0-9]{6,32}$'
+        canonicalOpenUrl:
+          type: string
+          format: uri
+          pattern: '^https://(op4n\.me|staging\.op4n\.me)/[A-Za-z0-9]{6,32}$'
+        safeDestinationSummary: { $ref: '#/components/schemas/SafeDestinationSummary' }
+        aggregateTotalClicks: { type: integer, minimum: 0 }
+        publicDiscovery: { type: string, enum: [eligible, withheld] }
+      example:
+        canonicalCode: R1EXAMPLE
+        displayTitle: Example documentation
+        canonicalShortUrl: https://op4n.me/R1EXAMPLE
+        canonicalOpenUrl: https://op4n.me/R1EXAMPLE
+        safeDestinationSummary:
+          origin: https://example.com
+          path: /docs
+          displayValue: https://example.com/docs
+        aggregateTotalClicks: 0
+        publicDiscovery: eligible
+    AdminDiscoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, note]
+      properties:
+        decision:
+          type: string
+          enum: [eligible, withheld, policy]
+          description: eligible/withheld override the screening result; policy clears the override.
+        note: { type: string, minLength: 1, maxLength: 900 }
+    AdminDiscoveryResult:
+      type: object
+      additionalProperties: false
+      required: [canonicalCode, discoveryOverride, changed, auditRecorded]
+      properties:
+        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+        discoveryOverride: { type: [string, 'null'], enum: [eligible, withheld, null] }
+        changed: { type: boolean }
+        auditRecorded: { type: boolean }
     LatestLinksResponse:
       type: object
       additionalProperties: false
@@ -1205,6 +1309,10 @@ components:
         - lifecycleState
         - safetyState
         - discoveryState
+        - discoveryPolicyVersion
+        - discoveryOverride
+        - publiclyDiscoverable
+        - safeDestinationDisplay
         - visibility
         - createdAt
         - disabledAt
@@ -1220,7 +1328,16 @@ components:
         destinationVersion: { type: integer, const: 1 }
         lifecycleState: { type: string, enum: [active, disabled, deleted] }
         safetyState: { type: string, enum: [pending, approved, blocked] }
-        discoveryState: { type: string, enum: [eligible, withheld] }
+        discoveryState:
+          type: string
+          enum: [eligible, withheld]
+          description: Screening result recorded at creation (Order 61).
+        discoveryPolicyVersion: { type: string, maxLength: 64 }
+        discoveryOverride: { type: [string, 'null'], enum: [eligible, withheld, null] }
+        publiclyDiscoverable:
+          type: boolean
+          description: True when the link appears in Latest Links and exact search right now.
+        safeDestinationDisplay: { type: string, maxLength: 512 }
         visibility: { type: string, enum: [public] }
         createdAt: { type: string, format: date-time }
         disabledAt: { type: [string, 'null'], format: date-time }
@@ -1245,7 +1362,7 @@ components:
             additionalProperties: false
             required: [actionType, reasonCode, reasonDetail, occurredAt]
             properties:
-              actionType: { type: string, enum: [disable, restore, triage, resolve, note, reveal_destination] }
+              actionType: { type: string, enum: [disable, restore, triage, resolve, note, reveal_destination, discovery_override] }
               reasonCode: { type: [string, 'null'] }
               reasonDetail: { type: [string, 'null'], maxLength: 1000 }
               occurredAt: { type: string, format: date-time }
