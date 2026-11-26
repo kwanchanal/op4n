@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Op4n Admin</title>
+    <link rel="icon" type="image/svg+xml" href="favicon/op4n-star.svg" />
+    <link rel="stylesheet" href="admin.css?v=r1-admin" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-header">
+        <h1>Op4n Admin</h1>
+        <p class="admin-env" id="adminEnvironment" aria-live="polite"></p>
+      </header>
+
+      <p class="admin-status" id="adminStatus" role="status" aria-live="polite"></p>
+
+      <section class="admin-panel" id="unavailablePanel" hidden>
+        <h2>Admin is not available here</h2>
+        <p>This environment has no Admin sign-in configured.</p>
+      </section>
+
+      <form class="admin-panel" id="signInForm" hidden novalidate>
+        <h2>Sign in</h2>
+        <label for="adminEmail">Email</label>
+        <input id="adminEmail" name="email" type="email" autocomplete="username" required />
+        <label for="adminPassword">Password</label>
+        <input id="adminPassword" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit" id="signInSubmit">Sign in</button>
+      </form>
+
+      <form class="admin-panel" id="enrollForm" hidden novalidate>
+        <h2>Set up your authenticator</h2>
+        <p>Scan this code with an authenticator app, then enter the 6-digit code it shows.</p>
+        <img id="enrollQr" alt="Authenticator setup QR code" width="200" height="200" />
+        <p class="admin-secret">Can’t scan? Enter this key: <code id="enrollSecret"></code></p>
+        <label for="enrollCode">6-digit code</label>
+        <input id="enrollCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
+        <button type="submit" id="enrollSubmit">Verify and finish setup</button>
+      </form>
+
+      <form class="admin-panel" id="challengeForm" hidden novalidate>
+        <h2>Authenticator code</h2>
+        <label for="challengeCode">6-digit code</label>
+        <input id="challengeCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
+        <button type="submit" id="challengeSubmit">Verify</button>
+      </form>
+
+      <section class="admin-panel" id="sessionPanel" hidden>
+        <h2>Admin session</h2>
+        <dl class="admin-facts">
+          <dt>Environment</dt><dd id="sessionEnvironment"></dd>
+          <dt>Assurance</dt><dd id="sessionAssurance"></dd>
+          <dt>Recent sign-in</dt><dd id="sessionRecent"></dd>
+          <dt>Expires</dt><dd id="sessionExpires"></dd>
+        </dl>
+        <p class="admin-note">Moderation tools arrive with the Admin lookup, queue, disable, and re-enable cards.</p>
+      </section>
+
+      <button type="button" class="admin-secondary" id="signOutButton" hidden>Sign out</button>
+    </main>
+
+    <script src="config/runtime-config.js?v=r1-admin"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"
+      integrity="sha384-rwykjmWNwVxboyFmvK9OXN0wj9hnMHA2aAHtits54DuACyCq0M2PrSNxhRb+hvXT"
+      crossorigin="anonymous"
+    ></script>
+    <script src="admin.js?v=r1-admin"></script>
+  </body>
+</html>

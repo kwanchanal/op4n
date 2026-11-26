@@ -1,5 +1,8 @@
 [
   "CNAME",
+  "admin.css",
+  "admin.html",
+  "admin.js",
   "app.js",
   "config/runtime-config.js",
   "data/example-links.js",

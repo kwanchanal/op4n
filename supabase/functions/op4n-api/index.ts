@@ -1,3 +1,4 @@
+import { adminSessionHandler, createAdminGate, createJwksKeyStore } from "../_shared/admin-auth.mjs";
 import { createCanonicalCodeGenerator } from "../_shared/canonical-code.mjs";
 import {
   createLinkHandler,
@@ -99,10 +100,31 @@ const createHandler = createLinkHandler({
   fingerprintKeyVersion: Deno.env.get("DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT") || "",
 });
 
+// Admin: Supabase Auth user JWT (ES256, verified against this project's JWKS),
+// founder subject allowlist, aal2. Missing configuration fails closed (503).
+const adminRoute = createAdminGate({
+  issuer: Deno.env.get("FOUNDER_AUTH_ISSUER"),
+  audience: Deno.env.get("FOUNDER_AUTH_AUDIENCE"),
+  subjectAllowlist: Deno.env.get("FOUNDER_SUBJECT_ALLOWLIST"),
+  keyStore: supabaseUrl
+    ? createJwksKeyStore({
+      loadJwks: async () => {
+        const response = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!response.ok) throw new Error(`JWKS returned ${response.status}`);
+        return response.json();
+      },
+    })
+    : null,
+  allowedOrigins,
+});
+
 const handlers = {
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
   recordRedirectClick: createClickHandler({ credential: internalCredential, persistence }),
+  getAdminSession: adminRoute("getAdminSession", adminSessionHandler({ environment })),
   submitPublicLinkReport: createReportHandler({
     environment,
     allowedOrigins,

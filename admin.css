@@ -1,0 +1,81 @@
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted-foreground: #737373;
+  --border: #e5e5e5;
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --destructive: #e7000b;
+  --ring: #a1a1a1;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+.admin-shell {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+.admin-header h1 { margin: 0; font-size: 1.5rem; }
+.admin-env { margin: 4px 0 0; color: var(--muted-foreground); font-size: 0.875rem; }
+.admin-env[data-env="staging"]::before { content: "● "; color: #d97706; }
+
+.admin-status { min-height: 1.5em; margin: 16px 0; }
+.admin-status[data-tone="error"] { color: var(--destructive); }
+
+.admin-panel {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.admin-panel[hidden] { display: none; }
+.admin-panel h2 { margin: 0 0 4px; font-size: 1.125rem; }
+.admin-panel p { margin: 0; }
+
+label { font-weight: 600; font-size: 0.875rem; }
+
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+button {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: progress; }
+.admin-secondary { background: transparent; color: var(--foreground); border: 1px solid var(--border); }
+
+input:focus-visible, button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+#enrollQr { justify-self: center; background: #fff; }
+.admin-secret code { word-break: break-all; }
+
+.admin-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.admin-facts dt { color: var(--muted-foreground); }
+.admin-facts dd { margin: 0; }
+.admin-note { color: var(--muted-foreground); font-size: 0.875rem; }

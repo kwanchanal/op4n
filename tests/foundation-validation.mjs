@@ -134,7 +134,7 @@ function validateOpenApi(path) {
     }
   }
   const operationIds = operations.map(({ operation }) => operation.operationId);
-  if (operations.length !== 12) fail(`OpenAPI has ${operations.length} operations; expected 12`);
+  if (operations.length !== 13) fail(`OpenAPI has ${operations.length} operations; expected 13`);
   if (operationIds.some((value) => typeof value !== "string" || !value)) fail("OpenAPI has an operation without operationId");
   if (new Set(operationIds).size !== operationIds.length) fail("OpenAPI operationId values are not unique");
   if (operations.some(({ operation }) => Object.hasOwn(operation.responses ?? {}, "425"))) fail("OpenAPI still declares status 425");

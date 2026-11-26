@@ -44,6 +44,7 @@ jobs:
         run: |
           node tests/staging-preflight.mjs --self-test
           node tests/staging-smoke.mjs --self-test
+          node tests/staging-runtime-config.mjs --self-test
       - name: Run the current prototype smoke test in headless Chrome
         run: node tests/run-prototype-smoke.mjs
       - name: Build the immutable release candidate and sanitized manifest
