@@ -25,15 +25,9 @@ export default defineConfig({
       name: "firefox",
       use: {
         ...devices["Desktop Firefox"],
-        // Headless Firefox on Linux CI runners crashes rendering these pages
-        // with GPU compositing and backdrop-filter; use software rendering.
-        launchOptions: {
-          firefoxUserPrefs: {
-            "gfx.webrender.software": true,
-            "layers.acceleration.disabled": true,
-            "layout.css.backdrop-filter.enabled": false,
-          },
-        },
+        // Trace screenshots crash headless Firefox's content process on these
+        // pages on Linux CI runners (isolated by diagnostic runs, 2026-11-26).
+        trace: "off",
       },
     },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
