@@ -100,7 +100,8 @@ export function createDestinationPolicy({ shortLinkHosts = ["op4n.me"] } = {}) {
       if (parsed.username || parsed.password) {
         return invalid("VALIDATION_ERROR", "Destination credentials are not allowed.");
       }
-      if (!parsed.hostname || blockedHosts.has(parsed.hostname.toLowerCase())) {
+      // A trailing dot ("op4n.me.") names the same host and must not bypass the block.
+      if (!parsed.hostname || blockedHosts.has(parsed.hostname.toLowerCase().replace(/\.$/, ""))) {
         return invalid("VALIDATION_ERROR", "This destination host is not allowed.");
       }
       if (isPrivateNetworkHost(parsed.hostname)) {

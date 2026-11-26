@@ -189,9 +189,11 @@ export function createNotificationClaimHandler({ credential, persistence, enviro
       batchId: result?.batchId ?? null,
       events: Number(result?.events ?? 0),
       entries: entries.map((entry) => ({
-        canonicalCode: String(entry.canonicalCode),
-        kind: entry.kind === "safety_block" ? "safety_block" : "report",
+        canonicalCode: entry.kind === "ops_alert" ? null : String(entry.canonicalCode),
+        kind: ["safety_block", "ops_alert"].includes(entry.kind) ? entry.kind : "report",
         reasonCategory: entry.reasonCategory ?? null,
+        alertCode: entry.kind === "ops_alert" ? String(entry.alertCode) : null,
+        alertDetail: entry.kind === "ops_alert" ? String(entry.alertDetail ?? "").slice(0, 200) : null,
         priority: ["S1", "S2", "S3"].includes(entry.priority) ? entry.priority : "S3",
         count: Number(entry.count),
         firstAt: new Date(entry.firstAt).toISOString(),
@@ -327,4 +329,26 @@ export function createHealthHandlers({
       }
     },
   });
+}
+
+// POST /api/v1/internal/ops/daily-check (runOpsDailyCheck): called once a day
+// by the notifier Worker. Queues quota and stale-S1 alerts into the outbox.
+export function createOpsDailyCheckHandler({ credential, persistence, environment, requestId = () => crypto.randomUUID() }) {
+  return async function handleOpsDailyCheck(request) {
+    const id = requestId();
+    const denied = authorize(request, credential, id, "POST");
+    if (denied) return denied;
+    try {
+      const summary = await persistence.opsDailyCheck({ environment });
+      return json(200, {
+        estimatedMonthlyInvocations: Number(summary?.estimatedMonthlyInvocations ?? 0),
+        invocationPercent: Number(summary?.invocationPercent ?? 0),
+        databasePercent: Number(summary?.databasePercent ?? 0),
+        staleS1Cases: Number(summary?.staleS1Cases ?? 0),
+        alertsQueued: Array.isArray(summary?.alertsQueued) ? summary.alertsQueued.map(String) : [],
+      }, id);
+    } catch {
+      return unavailable(id);
+    }
+  };
 }

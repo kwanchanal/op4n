@@ -8,6 +8,7 @@ const ROUTES = Object.freeze([
   ["/api/v1/internal/health/live", "getEnvironmentLiveness"],
   ["/api/v1/internal/health/ready", "getEnvironmentReadiness"],
   ["/api/v1/internal/synthetic/ensure", "ensureSyntheticLink"],
+  ["/api/v1/internal/ops/daily-check", "runOpsDailyCheck"],
   ["/api/v1/admin/session", "getAdminSession"],
   ["/api/v1/admin/link-lookup", "findAdminLink"],
   ["/api/v1/admin/cases", "listAdminCases"],

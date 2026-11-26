@@ -10,7 +10,7 @@ workers_dev = false
 name = "op4n-notifier-staging"
 
 [env.staging.triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "7 1 * * *"]
 
 [[env.staging.send_email]]
 name = "NOTIFY_EMAIL"

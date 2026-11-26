@@ -842,6 +842,8 @@ paths:
                   - canonicalCode: R1EXAMPLE
                     kind: report
                     reasonCategory: spam
+                    alertCode: null
+                    alertDetail: null
                     priority: S3
                     count: 2
                     firstAt: '2026-11-26T10:00:00.000Z'
@@ -903,6 +905,46 @@ paths:
         '401': { $ref: '#/components/responses/InternalUnauthorized' }
         '413': { $ref: '#/components/responses/InternalPayloadTooLarge' }
         '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/ops/daily-check:
+    post:
+      tags: [Operations]
+      operationId: runOpsDailyCheck
+      summary: Queue daily quota and stale-S1 alerts into the founder notification outbox
+      description: >-
+        Called once a day by the notifier Worker. Estimates Edge Function
+        invocations from recorded events (a lower bound) and compares them and
+        the database size with the Free-plan quotas; queues a warning at 70%,
+        critical at 90%, and an alert for open S1 cases older than 24 hours.
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: naturally-idempotent
+      x-rate-limit-class: operational-health
+      x-data-classification: operational
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Check completed; alertsQueued lists the alerts added (deduplicated per day).
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [estimatedMonthlyInvocations, invocationPercent, databasePercent, staleS1Cases, alertsQueued]
+                properties:
+                  estimatedMonthlyInvocations: { type: integer, minimum: 0 }
+                  invocationPercent: { type: integer, minimum: 0 }
+                  databasePercent: { type: integer, minimum: 0 }
+                  staleS1Cases: { type: integer, minimum: 0 }
+                  alertsQueued:
+                    type: array
+                    items: { type: string, enum: [quota_warning, quota_critical, stale_s1_report] }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
         '500': { $ref: '#/components/responses/InternalServerError' }
         '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
   /api/v1/internal/synthetic/ensure:
@@ -1616,10 +1658,20 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [canonicalCode, kind, reasonCategory, priority, count, firstAt, lastAt]
+            required: [canonicalCode, kind, reasonCategory, alertCode, alertDetail, priority, count, firstAt, lastAt]
             properties:
-              canonicalCode: { type: string, pattern: '^[A-Za-z0-9]{6,32}$' }
-              kind: { type: string, enum: [report, safety_block] }
+              canonicalCode:
+                type: [string, 'null']
+                pattern: '^[A-Za-z0-9]{6,32}$'
+                description: Null for operational alerts.
+              kind: { type: string, enum: [report, safety_block, ops_alert] }
+              alertCode:
+                type: [string, 'null']
+                enum: [quota_warning, quota_critical, stale_s1_report, null]
+              alertDetail:
+                type: [string, 'null']
+                maxLength: 200
+                description: Counts and percentages only; never a destination, code, or personal data.
               reasonCategory:
                 type: [string, 'null']
                 enum: [phishing, malware, child_safety, illegal, impersonation, abuse, spam, other, null]

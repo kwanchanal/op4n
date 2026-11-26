@@ -15,10 +15,19 @@ function utc(iso) {
 
 export function renderDigest({ entries, events, environment, shortHost, adminUrl }) {
   const label = environment === "production" ? "Op4n" : `Op4n ${environment[0].toUpperCase()}${environment.slice(1)}`;
-  const links = new Set(entries.map((entry) => entry.canonicalCode)).size;
+  const moderation = entries.filter((entry) => entry.kind !== "ops_alert");
+  const alerts = entries.filter((entry) => entry.kind === "ops_alert");
+  const links = new Set(moderation.map((entry) => entry.canonicalCode)).size;
   const urgent = entries.some((entry) => entry.priority === "S1");
-  const subject = `[${label}] ${urgent ? "S1 " : ""}${events} new moderation event${events === 1 ? "" : "s"} on ${links} link${links === 1 ? "" : "s"}`;
+  const moderationEvents = moderation.reduce((sum, entry) => sum + Number(entry.count || 0), 0);
+  const subject = alerts.length
+    ? `[${label}] ${urgent ? "S1 " : ""}${alerts.length} operational alert${alerts.length === 1 ? "" : "s"}${moderationEvents ? ` and ${moderationEvents} moderation event${moderationEvents === 1 ? "" : "s"}` : ""}`
+    : `[${label}] ${urgent ? "S1 " : ""}${events} new moderation event${events === 1 ? "" : "s"} on ${links} link${links === 1 ? "" : "s"}`;
   const lines = entries.slice(0, MAX_LINES).map((entry) => {
+    if (entry.kind === "ops_alert") {
+      const detail = String(entry.alertDetail ?? "").replace(/[\r\n]+/g, " ").slice(0, 200);
+      return `${entry.priority}  operational alert (${String(entry.alertCode).replace(/[^a-z0-9_]/g, "")}): ${detail}`;
+    }
     const what = entry.kind === "safety_block" ? "automatic safety block" : `${entry.reasonCategory} report`;
     const code = String(entry.canonicalCode).replace(/[^A-Za-z0-9]/g, "");
     return `${entry.priority}  ${shortHost}/${code}  ${what} x${entry.count}  (first ${utc(entry.firstAt)}, last ${utc(entry.lastAt)})`;
@@ -101,12 +110,33 @@ export async function runDigest(env, {
   return { outcome, events: claimed.events, exhausted: completed.exhausted };
 }
 
+export const DAILY_CHECK_CRON = "7 1 * * *";
+
+// Once a day: ask op4n-api to queue quota and stale-S1 alerts (Orders 82,
+// 83). A failure is logged and never blocks the digest.
+export async function runDailyCheck(env, {
+  fetchImpl = fetch,
+  log = createLogger({ service: "notifier-worker", environment: env?.OP4N_ENVIRONMENT }),
+} = {}) {
+  try {
+    const summary = await callInternal(env, fetchImpl, "/api/v1/internal/ops/daily-check", {});
+    log.info("ops_daily_check", { outcome: "ok", ...summary });
+    return summary;
+  } catch (error) {
+    log.error("ops_daily_check_failed", { outcome: "error", reason: String(error?.message || error) });
+    return null;
+  }
+}
+
 export default {
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
     const { EmailMessage } = await import("cloudflare:email");
-    ctx.waitUntil(runDigest(env, {
-      send: (from, to, raw) => env.NOTIFY_EMAIL.send(new EmailMessage(from, to, raw)),
-    }));
+    ctx.waitUntil((async () => {
+      if (event?.cron === DAILY_CHECK_CRON) await runDailyCheck(env);
+      await runDigest(env, {
+        send: (from, to, raw) => env.NOTIFY_EMAIL.send(new EmailMessage(from, to, raw)),
+      });
+    })());
   },
   async fetch() {
     return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
