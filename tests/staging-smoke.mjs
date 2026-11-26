@@ -8,6 +8,7 @@ const STAGING_ORIGIN = "https://staging.op4n.com";
 const SHORT_HOST_ORIGIN = "https://staging.op4n.me";
 const SMOKE_DESTINATION = "https://example.com/op4n-staging-smoke";
 const PRODUCTION_ORIGIN = "https://op4n.com";
+const BURST_ATTEMPTS = 11;
 const CARD_FIELDS = [
   "aggregateTotalClicks",
   "canonicalCode",
@@ -73,7 +74,7 @@ export function checkPlatformRejectsSpoof(status, headers) {
 }
 
 export function checkRateLimited(response) {
-  if (!response) return ["8 rapid creates with spoofed client headers were never rate-limited"];
+  if (!response) return [`${BURST_ATTEMPTS} rapid creates with spoofed client headers were never rate-limited`];
   const failures = [];
   if (!(Number(response.headers.get("retry-after")) >= 1)) failures.push("429 has no Retry-After");
   if (response.headers.get("ratelimit-remaining") !== "0") failures.push("429 RateLimit-Remaining is not 0");
@@ -252,7 +253,10 @@ async function run() {
   let limitedResponse = null;
   const apiOrigin = new URL(endpoint).origin;
   const egress = new Set();
-  for (let attempt = 0; attempt < 8 && !limitedResponse; attempt += 1) {
+  // The limiter uses fixed 60 s windows, so a burst can straddle a window
+  // boundary. 11 requests (2 x limit + 1) guarantee that one window sees at
+  // least 6 even when the burst is split across two windows.
+  for (let attempt = 0; attempt < BURST_ATTEMPTS && !limitedResponse; attempt += 1) {
     egress.add(await egressAddress(apiOrigin));
     const response = await fetch(endpoint, {
       method: "POST",
