@@ -24,6 +24,12 @@ test.beforeEach(async ({ page, browserName }) => {
   });
 });
 
+// Every journey waits for the page to settle before interacting.
+async function open(page, path) {
+  await page.goto(path);
+  await page.waitForLoadState("networkidle");
+}
+
 async function expectAccessible(page, label) {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
@@ -40,7 +46,7 @@ async function makeLink(page, url, title = "") {
 
 test.describe("create, copy, and open", () => {
   test("a Guest creates a link and sees the public, read-only card", async ({ page }) => {
-    await page.goto("/index.html");
+    await open(page, "/index.html");
     await expectAccessible(page, "creation page");
     await expect(page.getByText("Guest links are public and read-only")).toBeVisible();
     await makeLink(page, `https://example.com/e2e-${Date.now()}?utm=1#frag`, "E2E link");
@@ -58,7 +64,7 @@ test.describe("create, copy, and open", () => {
   });
 
   test("keyboard only: Tab reaches the URL field and Enter submits", async ({ page }) => {
-    await page.goto("/index.html#linkUrl");
+    await open(page, "/index.html#linkUrl");
     await expect(page.locator("#linkUrl")).toBeFocused();
     await page.keyboard.type("https://example.com/keyboard");
     await page.keyboard.press("Enter");
@@ -66,7 +72,7 @@ test.describe("create, copy, and open", () => {
   });
 
   test("invalid destinations are rejected in place and input is kept", async ({ page }) => {
-    await page.goto("/index.html");
+    await open(page, "/index.html");
     await makeLink(page, "ftp://example.com/file");
     await expect(page.locator("#linkUrlError")).not.toBeEmpty();
     await expect(page.getByLabel("URL", { exact: true })).toHaveValue("ftp://example.com/file");
@@ -78,7 +84,7 @@ test.describe("mock-only error states", () => {
   test.skip(STAGING, "scenario parameters exist only with the mock adapter");
 
   test("rate limit explains the wait and keeps input", async ({ page }) => {
-    await page.goto("/index.html?create=rate-limit");
+    await open(page, "/index.html?create=rate-limit");
     await makeLink(page, "https://example.com/limited");
     await expect(page.locator("#formStatus")).toContainText("reached the limit");
     await expect(page.getByLabel("URL", { exact: true })).toHaveValue("https://example.com/limited");
@@ -86,27 +92,27 @@ test.describe("mock-only error states", () => {
   });
 
   test("a blocked destination shows the safety message with support contact", async ({ page }) => {
-    await page.goto("/index.html?create=blocked-destination");
+    await open(page, "/index.html?create=blocked-destination");
     await makeLink(page, "https://example.com/blocked");
     await expect(page.locator("#linkUrlError")).toContainText("support@op4n.com");
   });
 
   test("a withheld destination explains it stays out of discovery", async ({ page }) => {
-    await page.goto("/index.html");
+    await open(page, "/index.html");
     await makeLink(page, "https://example.com/reset?token=SECRET");
     await expect(page.locator("#formStatus")).toContainText("won’t appear in Latest Links");
   });
 
   test("Latest Links empty, error, and paused states", async ({ page }) => {
     for (const [scenario, text] of [["empty", "No public links yet."], ["error", "couldn’t load"], ["paused", "temporarily paused"]]) {
-      await page.goto(`/latest.html?latest=${scenario}`);
+      await open(page, `/latest.html?latest=${scenario}`);
       await expect(page.locator("#latestList")).toContainText(text);
       await expectAccessible(page, `latest ${scenario}`);
     }
   });
 
   test("search result, no result, unavailable, error, and 429 states", async ({ page }) => {
-    await page.goto("/latest.html");
+    await open(page, "/latest.html");
     const search = async (value) => {
       await page.getByLabel("Find a link by short URL or code").fill(value);
       await page.getByRole("button", { name: "Find" }).click();
@@ -120,7 +126,7 @@ test.describe("mock-only error states", () => {
       ["ERROR0001", "Search is temporarily unavailable"],
       ["LIMIT0001", "search again"],
     ]) {
-      await page.goto("/latest.html");
+      await open(page, "/latest.html");
       await search(value);
       await expect(page.locator("#searchResult")).toContainText(text);
       await expectAccessible(page, `search ${value}`);
@@ -128,7 +134,7 @@ test.describe("mock-only error states", () => {
   });
 
   test("report a link from a Latest Links card", async ({ page }) => {
-    await page.goto("/latest.html");
+    await open(page, "/latest.html");
     await page.locator("#latestList .report-link-btn").first().click();
     const dialog = page.getByRole("dialog", { name: "Report this link" });
     await expect(dialog).toBeVisible();
@@ -141,7 +147,7 @@ test.describe("mock-only error states", () => {
 
 test.describe("discovery and legal pages", () => {
   test("Latest Links lists cards and is reachable from navigation", async ({ page }) => {
-    await page.goto("/index.html");
+    await open(page, "/index.html");
     await page.getByRole("link", { name: /See All Created Links/ }).first().click({ force: true });
     await expect(page).toHaveURL(/latest/);
     await expect(page.getByRole("heading", { level: 1, name: "Latest Links" })).toBeVisible();
@@ -151,12 +157,12 @@ test.describe("discovery and legal pages", () => {
 
   test("legal pages carry a version and are linked from the footer", async ({ page }) => {
     for (const path of ["terms.html", "privacy.html", "acceptable-use.html"]) {
-      await page.goto(`/${path}`);
+      await open(page, `/${path}`);
       await expect(page.locator(".legal-meta")).toContainText(/Version r1-\d{4}-\d{2}-\d{2} · Effective/);
       await expect(page.locator(".site-footer")).toContainText("support@op4n.com");
       await expectAccessible(page, path);
     }
-    await page.goto("/index.html");
+    await open(page, "/index.html");
     await expect(page.locator(".guest-link-disclosure a[href='terms.html']")).toBeVisible();
   });
 });
@@ -166,7 +172,7 @@ test.describe("responsive layouts", () => {
     test(`no horizontal overflow at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       for (const path of ["/index.html", "/latest.html", "/terms.html"]) {
-        await page.goto(path);
+        await open(page, path);
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         expect(overflow, `${path} at ${width}px`).toBeLessThanOrEqual(1);
       }
