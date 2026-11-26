@@ -80,6 +80,9 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
     async getFeatureFlags() {
       return callRpc("get_feature_flags_v1", {});
     },
+    async opsDailyCheck(input) {
+      return callRpc("ops_daily_checks_v1", { p_environment: input.environment });
+    },
     async healthReadiness() {
       return callRpc("health_readiness_v1", {});
     },

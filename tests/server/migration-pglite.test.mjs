@@ -25,6 +25,8 @@ async function database() {
     ["202611260002_admin_moderation.sql", null],
     ["202611270001_public_discovery.sql", null],
     ["202611270002_health_synthetic.sql", null],
+    ["202611270003_ops_alerts.sql", null],
+    ["202611270004_r1_metrics.sql", null],
   ]) {
     const sql = await migration(name);
     if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
@@ -619,4 +621,41 @@ test("the synthetic link redirects, is never counted, and is never discoverable"
   assert.deepEqual(await value(db, "select public.health_readiness_v1()"), { database: true, schema: true });
   await createLink(db);
   await assert.rejects(value(db, "select public.ensure_synthetic_link_v1($1,'https://staging.op4n.com/','https://staging.op4n.com',$2)", [CODE, "8".repeat(64)]), /already used/);
+});
+
+test("the daily ops check queues quota and stale-S1 alerts once, and the digest claim carries them", async () => {
+  const db = await database();
+  await createLink(db);
+  await value(db, "select public.submit_report_v1('staging',$1,$2,$3,'phishing',null)", [CODE, "1".repeat(64), "1".repeat(64)]);
+  await db.exec("update public.moderation_cases set opened_at = now() - interval '25 hours'");
+  await db.exec("update public.notification_outbox set state = 'sent', sent_at = now()");
+  // A tiny quota forces the critical threshold for the test.
+  const summary = await value(db, "select public.ops_daily_checks_v1('staging', 1000, 524288000)");
+  assert.deepEqual(summary.alertsQueued.sort(), ["quota_critical", "stale_s1_report"]);
+  assert.equal(summary.staleS1Cases, 1);
+  const again = await value(db, "select public.ops_daily_checks_v1('staging', 1000, 524288000)");
+  assert.deepEqual(again.alertsQueued, [], "deduplicated within the day");
+  const warning = await value(db, "select public.ops_daily_checks_v1('staging', 1300, 524288000000)");
+  assert.ok(warning.invocationPercent >= 70);
+  const claimed = await value(db, "select public.claim_notifications_v1('staging', 50, 120)");
+  const ops = claimed.entries.filter((entry) => entry.kind === "ops_alert");
+  assert.deepEqual(ops.map((entry) => [entry.alertCode, entry.priority]).sort(), [["quota_critical", "S1"], ["stale_s1_report", "S1"]]);
+  assert.ok(ops.every((entry) => entry.canonicalCode === null && !/https?:/.test(entry.alertDetail)));
+  await assert.rejects(db.query("insert into public.notification_outbox (environment, kind) values ('staging','ops_alert')"));
+});
+
+test("R1 metrics count links, reports, and moderation time without destinations or identifiers", async () => {
+  const db = await database();
+  await createLink(db);
+  await value(db, "select public.submit_report_v1('staging',$1,$2,$3,'spam',null)", [CODE, "2".repeat(64), "2".repeat(64)]);
+  await db.exec("update public.reports set created_at = now() - interval '2 hours'");
+  const caseId = await value(db, "select id from public.moderation_cases limit 1");
+  await value(db, "select public.admin_transition_case_v1($1,'triage','founder:t','looking')", [caseId]);
+  const metrics = await value(db, "select public.r1_metrics_v1(now() - interval '1 day', now() + interval '1 minute')");
+  assert.equal(metrics.linksCreated, 1);
+  assert.equal(metrics.reports, 1);
+  assert.equal(Number(metrics.reportsPer1000Links), 1000);
+  assert.ok(Number(metrics.medianHoursToFirstModerationAction) >= 1.9);
+  assert.equal(metrics.reportsWithoutAction, 0);
+  assert.doesNotMatch(JSON.stringify(metrics), /https?:|example\.com|founder:/);
 });

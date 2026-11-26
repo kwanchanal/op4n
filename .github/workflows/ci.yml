@@ -45,6 +45,8 @@ jobs:
           node tests/staging-preflight.mjs --self-test
           node tests/staging-smoke.mjs --self-test
           node tests/staging-runtime-config.mjs --self-test
+      - name: Audit dependencies for known high or critical vulnerabilities
+        run: npm audit --audit-level=high
       - name: Check shipped copy (no personal email, Paid-tier wording, or visible openme)
         run: |
           node tests/copy-policy.mjs --self-test

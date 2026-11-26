@@ -104,7 +104,7 @@
       return invalid("Remove the username or password from this URL.");
     }
     if (!parsedUrl.hostname) return invalid("Enter a complete HTTP or HTTPS URL.");
-    if (SHORT_LINK_HOSTS.has(parsedUrl.hostname.toLowerCase())) {
+    if (SHORT_LINK_HOSTS.has(parsedUrl.hostname.toLowerCase().replace(/\.$/, ""))) {
       return invalid("Op4n short links can't be shortened again. Use the original destination URL.");
     }
     if (isPrivateNetworkHost(parsedUrl.hostname)) {

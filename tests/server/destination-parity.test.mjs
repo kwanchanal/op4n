@@ -19,6 +19,8 @@ const FIXTURES = [
   ["op4n.me host", "https://op4n.me/ABCDEFG", false],
   ["staging short host", "https://staging.op4n.me/ABCDEFG", false],
   ["uppercase short host", "https://OP4N.ME/ABCDEFG", false],
+  ["trailing-dot short host", "https://op4n.me./ABCDEFG", false],
+  ["trailing-dot staging short host", "https://STAGING.OP4N.ME./ABCDEFG", false],
   ["2049 characters", `https://example.com/${"a".repeat(2049 - "https://example.com/".length)}`, false],
   ["exactly 2048 characters", `https://example.com/${"a".repeat(2048 - "https://example.com/".length)}`, true],
   ["ftp scheme", "ftp://example.com/file", false],

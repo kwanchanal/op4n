@@ -11,6 +11,7 @@ import { createPostgresRateLimitGate, resolveRateLimits } from "../_shared/rate-
 import {
   createClickHandler,
   createHealthHandlers,
+  createOpsDailyCheckHandler,
   createNotificationClaimHandler,
   createNotificationCompleteHandler,
   createRedirectLookupHandler,
@@ -173,6 +174,7 @@ const handlers = {
   getEnvironmentLiveness: health.live,
   getEnvironmentReadiness: health.ready,
   ensureSyntheticLink: health.ensureSynthetic,
+  runOpsDailyCheck: createOpsDailyCheckHandler({ credential: internalCredential, persistence, environment }),
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
   recordRedirectClick: createClickHandler({ credential: internalCredential, persistence }),
