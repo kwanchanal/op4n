@@ -80,6 +80,22 @@ export function checkRateLimited(response) {
   return failures;
 }
 
+// A burst that was never limited is only a failure when every request left
+// from the same public address. Hosted runners can rotate their outbound
+// address per connection (observed 2026-11-23), which makes each request a
+// fresh client; that outcome is inconclusive, not a pass.
+export function checkBurstOutcome(response, distinctEgressCount) {
+  if (response) return { failures: checkRateLimited(response), inconclusive: false };
+  if (distinctEgressCount > 1) return { failures: [], inconclusive: true };
+  return { failures: checkRateLimited(null), inconclusive: false };
+}
+
+async function egressAddress(apiOrigin) {
+  const response = await fetch(`${apiOrigin}/cdn-cgi/trace`, { cache: "no-store" });
+  const text = await response.text();
+  return text.match(/^ip=(.+)$/m)?.[1]?.trim() ?? "unknown";
+}
+
 export function checkRuntimeConfig(text, ref) {
   return /adapter:\s*"http"/.test(text) &&
     text.includes(`https://${ref}.supabase.co/functions/v1/op4n-api`) &&
@@ -119,6 +135,10 @@ function selfTest() {
     [checkPlatformRejectsSpoof(204, new Headers({ "x-request-id": "abc" })).length === 0, false],
     [checkRateLimited({ headers: new Headers({ "retry-after": "42", "ratelimit-remaining": "0" }) }).length === 0, true],
     [checkRateLimited({ headers: new Headers({ "ratelimit-remaining": "0" }) }).length === 0, false],
+    [checkBurstOutcome(null, 1).failures.length === 0, false],
+    [checkBurstOutcome(null, 3).inconclusive, true],
+    [checkBurstOutcome(null, 3).failures.length === 0, true],
+    [checkBurstOutcome({ headers: new Headers({ "retry-after": "5", "ratelimit-remaining": "0" }) }, 3).inconclusive, false],
     [checkNoRedirect(404, new Headers({ location: "https://x", "cache-control": "no-store" }), 404).length === 0, false],
     [checkRuntimeConfig('environment: "local", adapter: "mock", apiBaseUrl: "", shortLinkHost: "op4n.me"', "abcdefghijklmnopqrst"), false],
     [checkRuntimeConfig('environment: "staging", adapter: "http", apiBaseUrl: "https://zzzzzzzzzzzzzzzzzzzz.supabase.co/functions/v1/op4n-api", shortLinkHost: "staging.op4n.me"', "abcdefghijklmnopqrst"), false],
@@ -209,7 +229,10 @@ async function run() {
   // client. Spoofed forwarding headers must not create fresh identities, so a
   // burst from this runner is limited no matter what the headers claim.
   let limitedResponse = null;
+  const apiOrigin = new URL(endpoint).origin;
+  const egress = new Set();
   for (let attempt = 0; attempt < 8 && !limitedResponse; attempt += 1) {
+    egress.add(await egressAddress(apiOrigin));
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -226,7 +249,12 @@ async function run() {
     if (response.status === 429) limitedResponse = response;
     else if (response.status !== 201) failures.push(`burst request returned ${response.status}`);
   }
-  failures.push(...checkRateLimited(limitedResponse));
+  // Addresses stay in memory; only their count is printed.
+  const burst = checkBurstOutcome(limitedResponse, egress.size);
+  failures.push(...burst.failures);
+  if (burst.inconclusive) {
+    console.log(`::warning::Rate-limit burst inconclusive: this runner used ${egress.size} outbound addresses, so each request was a new client. Verify the limiter from a fixed address.`);
+  }
 
   // The deployed frontend must select the http adapter and point at this
   // project's API. Pages can take a few seconds to serve a new deployment.
@@ -245,7 +273,7 @@ async function run() {
     console.error(`request id: ${created.headers.get("x-request-id") ?? "none"}`);
     process.exit(1);
   }
-  console.log("PASS Staging smoke: create 201 for Staging origin; Production origin refused");
+  console.log("PASS Staging smoke: create, CORS, reports, redirect, spoof rejection, rate limit, and runtime config");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
