@@ -11,7 +11,9 @@ export default defineConfig({
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]] : "list",
-  use: { baseURL, trace: "retain-on-failure" },
+  // Reduced motion keeps rotating text still, so axe never samples a word
+  // mid-fade; it also exercises the WCAG 2.2.2 reduced-motion path.
+  use: { baseURL, trace: "retain-on-failure", reducedMotion: "reduce" },
   webServer: staging ? undefined : {
     command: "node tests/e2e/static-server.mjs",
     url: "http://127.0.0.1:4173/index.html",

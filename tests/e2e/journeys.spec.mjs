@@ -8,6 +8,22 @@ import { expect, test } from "@playwright/test";
 const STAGING = Boolean(process.env.E2E_BASE_URL);
 const SHORT_ORIGIN = process.env.E2E_SHORT_ORIGIN || "https://staging.op4n.me";
 
+// Headless Firefox on CI runners crashes on the Material Symbols variable
+// font, so Firefox runs without external fonts. The icons are aria-hidden
+// glyphs; without the font they would render as their ligature names, so
+// they are hidden to match what users see.
+test.beforeEach(async ({ page, browserName }) => {
+  if (browserName !== "firefox") return;
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = ".material-symbols-outlined, .material-icons { visibility: hidden !important; }";
+      document.head.append(style);
+    });
+  });
+});
+
 async function expectAccessible(page, label) {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
