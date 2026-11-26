@@ -35,3 +35,7 @@ service-account.*.json
 # Local/CI-generated validation and release-readiness evidence.
 .ci-artifacts/
 node_modules/
+
+# Playwright output.
+test-results/
+playwright-report/

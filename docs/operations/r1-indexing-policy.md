@@ -8,7 +8,7 @@ search-engine indexing of link-card data. Feature Inventory Order 79.
 | Page or response | Indexable | Mechanism |
 | --- | --- | --- |
 | `index.html` (Make Link) | Yes | Listed in `sitemap.xml`. |
-| Legal pages (when added) | Yes | Add to `sitemap.xml`. |
+| `terms.html`, `privacy.html`, `acceptable-use.html` | Yes | Listed in `sitemap.xml`. |
 | `latest.html` (Latest Links and search) | No | `<meta name="robots" content="noindex, nofollow">`. Not blocked in `robots.txt`, so crawlers can read the tag. |
 | Search results | No | The query never enters the page URL, so there is no result URL to index. |
 | `admin.html` | No | `noindex, nofollow` meta tag and `Disallow: /admin` in `robots.txt`. |

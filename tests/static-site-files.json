@@ -1,6 +1,7 @@
 [
   ".well-known/security.txt",
   "CNAME",
+  "acceptable-use.html",
   "admin-tools.js",
   "admin.css",
   "admin.html",
@@ -30,6 +31,7 @@
   "message-icons/message4.png",
   "message-icons/message5.png",
   "message-icons/message6.png",
+  "privacy.html",
   "public-card.js",
   "robots.txt",
   "services/destination-url-validation.js",
@@ -46,5 +48,6 @@
   "services/short-link-lookup.js",
   "shared-sidebar.js",
   "sitemap.xml",
-  "styles.css"
+  "styles.css",
+  "terms.html"
 ]

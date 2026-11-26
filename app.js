@@ -379,13 +379,16 @@
     });
   }
 
+  // WCAG 2.2.2: rotating text and carousels stay still for reduced motion.
+  const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
   function initTopbar() {
     elements.topbarAddBtn?.addEventListener("click", () => {
       elements.linkUrl.focus({ preventScroll: true });
       elements.linkUrl.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
-    if (!elements.topbarPromptText) return;
+    if (!elements.topbarPromptText || prefersReducedMotion()) return;
     const prompts = [
       "Tell The World What You Do",
       "Paste Your Link And Get Shareable One",
@@ -399,7 +402,7 @@
   }
 
   function initBanner() {
-    if (!elements.bannerText) return;
+    if (!elements.bannerText || prefersReducedMotion()) return;
     const messages = ["OP4N.COM", "OP4N.ME/MAKE LINKS SHAREABLE"];
     let messageIndex = 0;
     window.setInterval(() => {
@@ -513,6 +516,8 @@
       elements.adContactSheet?.classList.toggle("is-open", open);
       elements.adContactBackdrop?.classList.toggle("is-open", open);
       elements.adContactSheet?.setAttribute("aria-hidden", String(!open));
+      // Hidden content must not be focusable (WCAG aria-hidden-focus).
+      elements.adContactSheet?.toggleAttribute("inert", !open);
       elements.adContactBackdrop?.setAttribute("aria-hidden", String(!open));
       if (open) window.setTimeout(() => elements.adContactEmail?.focus(), 120);
     };
@@ -530,7 +535,7 @@
         `mailto:support@op4n.com?subject=${subject}&body=${body}`;
     });
 
-    if (!elements.adYouWord) return;
+    if (!elements.adYouWord || prefersReducedMotion()) return;
     const words = ["YOU", "คุณ", "你", "당신", "あなた", "тебя", "tú", "te", "toi", "ʻoe"];
     let wordIndex = 0;
     window.setInterval(() => {
