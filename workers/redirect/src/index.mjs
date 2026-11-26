@@ -7,7 +7,10 @@
 // analytics never delays or changes the 302. The destination is never logged.
 
 const CODE_PATTERN = /^\/([A-Za-z0-9]{6,32})$/;
-const LOOKUP_TIMEOUT_MS = 2000;
+// Supabase Edge Function cold boots after idle or deploy measured ~2.2 s on
+// Staging; a tighter bound turned every cold start into a 503 for an active
+// link. 5 s still fails closed well before the Worker wall-clock limit.
+const LOOKUP_TIMEOUT_MS = 5000;
 const CLICK_TIMEOUT_MS = 3000;
 
 const SECURITY_HEADERS = Object.freeze({
