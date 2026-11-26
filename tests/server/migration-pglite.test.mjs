@@ -23,6 +23,7 @@ async function database() {
     ["202611230001_reports_and_moderation.sql", null],
     ["202611260001_notification_outbox.sql", "op4n_purge_sent_notifications"],
     ["202611260002_admin_moderation.sql", null],
+    ["202611270001_public_discovery.sql", null],
   ]) {
     const sql = await migration(name);
     if (job) assert.match(sql, new RegExp(`cron\\.schedule\\(\\s*'${job}'`));
@@ -423,13 +424,17 @@ test("disable and restore change redirect state atomically, idempotently, and wi
   const disabled = await moderate(db, "disable", "1");
   assert.deepEqual(disabled, { kind: "changed", canonicalCode: CODE, lifecycleState: "disabled" });
   assert.equal((await resolve(db, CODE)).decision, "disabled", "redirect shows the unavailable page");
-  assert.equal(await value(db, "select discovery_state from public.canonical_links"), "withheld");
+  // Discovery screening is untouched; lifecycle alone removes it from discovery.
+  assert.equal(await value(db, "select discovery_state from public.canonical_links"), "eligible");
+  assert.deepEqual(await value(db, "select public.list_public_links_v1('https://staging.op4n.me', 100)"), { items: [] });
+  assert.deepEqual(await value(db, "select public.public_link_lookup_v1($1, 'https://staging.op4n.me')", [CODE]), { kind: "unavailable" });
   assert.equal((await moderate(db, "disable", "1")).kind, "replayed");
   assert.equal((await moderate(db, "disable", "1", "abuse_report", "b".repeat(64))).kind, "conflict");
   assert.equal((await moderate(db, "disable", "2")).kind, "unchanged");
   const restored = await moderate(db, "restore", "3", "operator_correction");
   assert.deepEqual(restored, { kind: "changed", canonicalCode: CODE, lifecycleState: "active" });
   assert.equal((await resolve(db, CODE)).decision, "redirect");
+  assert.equal((await value(db, "select public.public_link_lookup_v1($1, 'https://staging.op4n.me')", [CODE])).kind, "card");
   const history = (await value(db, "select public.admin_link_record_v1($1)", [CODE])).history;
   assert.deepEqual(history.map((entry) => [entry.actionType, entry.reasonCode]), [["restore", "operator_correction"], ["disable", "abuse_report"]]);
 });
@@ -442,4 +447,147 @@ test("restore is refused while safety is pending or blocked", async () => {
   assert.deepEqual(await moderate(db, "restore", "2", "operator_correction"), { kind: "safety_conflict", safetyState: "blocked" });
   assert.equal((await resolve(db, CODE)).decision, "disabled");
   assert.equal(Number(await value(db, "select count(*) from public.moderation_actions where action_type = 'restore'")), 0);
+});
+
+// ── Public discovery (Orders 61-63, 65, 72, 76, 78) ─────────────────────
+const BASE = "https://staging.op4n.me";
+let keySeq = 0;
+
+async function createV2(db, code, { discovery = "eligible", title = "T", path = "/docs", display = "/docs" } = {}) {
+  keySeq += 1;
+  const key = keySeq.toString(16).padStart(64, "0");
+  const reservation = await value(db, "select public.begin_creation_idempotency_v1('staging','createGuestCanonicalLink',$1,$2)", [key, "b".repeat(64)]);
+  const created = await value(db,
+    `select public.create_guest_link_v2('staging','createGuestCanonicalLink',$1,$2,$3,$4,$5,
+      'https://example.com/docs?token=SECRET#frag','https://example.com',$6,$7,$8,'HMAC-SHA-256','v1',
+      'r1-safe-path-v1',$9,'r1-discovery-v1',$10)`,
+    [key, "b".repeat(64), reservation.reservationToken, code, title, path, display, key, discovery, BASE]);
+  assert.equal(created.kind, "created");
+  return created.response;
+}
+const list = async (db, limit = 100) => (await value(db, "select public.list_public_links_v1($1, $2)", [BASE, limit])).items;
+const lookup = (db, code) => value(db, "select public.public_link_lookup_v1($1, $2)", [code, BASE]);
+const CARD_FIELDS = ["aggregateTotalClicks", "canonicalCode", "canonicalOpenUrl", "canonicalShortUrl", "displayTitle", "safeDestinationSummary"];
+
+test("creation v2 stores the safe summary and discovery result and returns six card fields plus publicDiscovery", async () => {
+  const db = await database();
+  const response = await createV2(db, "Pub0000001", { path: "/docs", display: "/docs?…" });
+  assert.deepEqual(Object.keys(response).sort(), [...CARD_FIELDS, "publicDiscovery"].sort());
+  assert.equal(response.publicDiscovery, "eligible");
+  assert.deepEqual(response.safeDestinationSummary, { origin: "https://example.com", path: "/docs", displayValue: "https://example.com/docs?…" });
+  assert.doesNotMatch(JSON.stringify(response), /SECRET|frag|token/);
+  const withheld = await createV2(db, "Wit0000001", { discovery: "withheld", path: "/…", display: "/…" });
+  assert.equal(withheld.publicDiscovery, "withheld");
+  assert.equal(await value(db, "select discovery_policy_version from public.canonical_links cl join public.issued_codes ic on ic.id = cl.issued_code_id where canonical_code = 'Wit0000001'"), "r1-discovery-v1");
+  await assert.rejects(db.query("update public.protected_destination_versions set safe_destination_display_path = '/x'"), /immutable/);
+  await assert.rejects(createV2(db, "Bad0000001", { display: "/a?b" }));
+});
+
+test("the public projection includes only active, approved, public, discoverable links without open S1", async () => {
+  const db = await database();
+  for (const code of ["Ok00000001", "Dis0000001", "Del0000001", "Pen0000001", "Blk0000001", "S1o0000001", "S2o0000001"]) await createV2(db, code);
+  await createV2(db, "Wit0000001", { discovery: "withheld" });
+  await createV2(db, "Ovr0000001", { discovery: "withheld" });
+  await createV2(db, "Ovw0000001");
+  const set = (code, assignment) => db.query(`update public.canonical_links set ${assignment} where issued_code_id = (select id from public.issued_codes where canonical_code = $1)`, [code]);
+  await set("Dis0000001", "lifecycle_state = 'disabled', disabled_at = now()");
+  await set("Del0000001", "lifecycle_state = 'deleted', deleted_at = now()");
+  await set("Pen0000001", "safety_state = 'pending'");
+  await set("Blk0000001", "safety_state = 'blocked'");
+  const report = (code, reason, n) => value(db, "select public.submit_report_v1('staging',$1,$2,$3,$4,null)", [code, n.repeat(64), n.repeat(64), reason]);
+  await report("S1o0000001", "phishing", "1");
+  await report("S2o0000001", "spam", "2");
+  await value(db, "select public.admin_set_discovery_v1('Ovr0000001','eligible','founder:t','reviewed false positive')");
+  await value(db, "select public.admin_set_discovery_v1('Ovw0000001','withheld','founder:t','contains a private document')");
+
+  const codes = (await list(db)).map((card) => card.canonicalCode);
+  assert.deepEqual(codes.sort(), ["Ok00000001", "Ovr0000001", "S2o0000001"].sort());
+  for (const card of await list(db)) assert.deepEqual(Object.keys(card).sort(), CARD_FIELDS);
+
+  assert.equal((await lookup(db, "Ok00000001")).kind, "card");
+  for (const code of ["Dis0000001", "Del0000001", "Pen0000001", "Blk0000001"]) {
+    assert.deepEqual(await lookup(db, code), { kind: "unavailable" }, code);
+  }
+  for (const code of ["Wit0000001", "S1o0000001", "Ovw0000001", "Unknown001", "bad code"]) {
+    assert.deepEqual(await lookup(db, code), { kind: "not_found" }, code);
+  }
+  await assert.rejects(db.query("select public.list_public_links_v1('https://evil.example', 10)"), /base URL/);
+
+  // Removing eligibility takes effect on the next query.
+  await set("Ok00000001", "safety_state = 'blocked'");
+  assert.ok(!(await list(db)).some((card) => card.canonicalCode === "Ok00000001"));
+  const history = (await value(db, "select public.admin_link_record_v1('Ovr0000001')")).history;
+  assert.deepEqual(history.map((entry) => entry.actionType), ["discovery_override"]);
+  assert.match(history[0].reasonDetail, /^discovery eligible: reviewed/);
+  assert.equal((await value(db, "select public.admin_set_discovery_v1('Ovr0000001','eligible','founder:t','again')")).kind, "unchanged");
+});
+
+test("Latest Links is newest first, bounded to 100, and counts clicks", async () => {
+  const db = await database();
+  for (let index = 0; index < 103; index += 1) await createV2(db, `L${String(index).padStart(9, "0")}`, { title: `Link ${index}` });
+  // PGlite timestamps can tie; give each link a distinct creation time.
+  await db.exec(`alter table public.canonical_links disable trigger canonical_links_identity_immutable;
+    update public.canonical_links cl set created_at = now() - ((200 - substr(ic.canonical_code, 2)::int) || ' seconds')::interval
+    from public.issued_codes ic where ic.id = cl.issued_code_id;
+    alter table public.canonical_links enable trigger canonical_links_identity_immutable;`);
+  const items = await list(db, 500);
+  assert.equal(items.length, 100);
+  assert.equal(items[0].canonicalCode, "L000000102");
+  assert.equal(items[99].canonicalCode, "L000000003");
+  assert.equal((await list(db, 5)).length, 5);
+  await value(db, "select public.record_click_v1($1,'L000000102',1,now())", [EVENT_A]);
+  assert.equal((await list(db, 1))[0].aggregateTotalClicks, 1);
+});
+
+test("browser roles cannot read base tables or call the public discovery functions", async () => {
+  const db = await database();
+  await createV2(db, "Ok00000001");
+  for (const role of ["anon", "authenticated"]) {
+    await db.exec(`set role ${role}`);
+    for (const statement of [
+      "select * from public.canonical_links",
+      "select * from public.protected_destination_versions",
+      "select public.list_public_links_v1('https://staging.op4n.me', 10)",
+      "select public.public_link_lookup_v1('Ok00000001', 'https://staging.op4n.me')",
+      "select public.admin_set_discovery_v1('Ok00000001','eligible','x','y')",
+    ]) {
+      await assert.rejects(db.query(statement), /permission denied/, `${role}: ${statement}`);
+    }
+    await db.exec("reset role");
+  }
+});
+
+test("Latest Links uses the partial index with 10,000 links", async () => {
+  const db = await database();
+  await db.exec(`
+    insert into public.issued_codes (id, canonical_code)
+      select gen_random_uuid(), 'X' || lpad(g::text, 9, '0') from generate_series(1, 10000) g;
+    set constraints all deferred;
+    with codes as (select id, canonical_code from public.issued_codes where canonical_code like 'X%'),
+    links as (
+      insert into public.canonical_links (id, issued_code_id, title, lifecycle_state, safety_state, discovery_state, visibility, current_destination_id, created_at)
+      select gen_random_uuid(), id, 'Seed', case when random() < 0.1 then 'disabled' else 'active' end, 'approved', 'eligible', 'public', gen_random_uuid(),
+        now() - (substr(canonical_code, 2)::int || ' seconds')::interval
+      from codes returning id, current_destination_id)
+    insert into public.protected_destination_versions (id, link_id, version_number, full_destination_url, destination_fingerprint,
+      fingerprint_algorithm, fingerprint_key_version, safe_destination_origin, summary_policy_version)
+    select current_destination_id, id, 1, 'https://example.com/', md5(id::text), 'HMAC-SHA-256', 'v1', 'https://example.com', 'r1-safe-path-v1' from links;
+    analyze;
+  `);
+  await db.exec("set enable_seqscan = off");
+  const plan = (await db.query(`explain select cl.id from public.canonical_links cl
+    where cl.lifecycle_state = 'active' and cl.safety_state = 'approved' and cl.visibility = 'public'
+    order by cl.created_at desc limit 100`)).rows.map((row) => Object.values(row)[0]).join("\n");
+  assert.match(plan, /canonical_links_public_latest_idx/);
+  await db.exec("reset enable_seqscan");
+  const durations = [];
+  for (let run = 0; run < 20; run += 1) {
+    const started = performance.now();
+    assert.equal((await list(db)).length, 100);
+    durations.push(performance.now() - started);
+  }
+  durations.sort((a, b) => a - b);
+  const p95 = durations[Math.ceil(durations.length * 0.95) - 1];
+  console.log(`latest-100 PGlite p95 ${p95.toFixed(1)} ms over 10,000 links`);
+  assert.ok(p95 < 300, `p95 ${p95} ms`);
 });

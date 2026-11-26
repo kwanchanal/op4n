@@ -22,7 +22,7 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
       });
     },
     async createGuestLink(input) {
-      return callRpc("create_guest_link_v1", {
+      return callRpc("create_guest_link_v2", {
         p_environment: input.environment,
         p_operation: input.operation,
         p_key_hash: input.keyHash,
@@ -32,12 +32,30 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
         p_title: input.title,
         p_full_destination_url: input.fullDestinationUrl,
         p_safe_origin: input.safeOrigin,
+        p_safe_path: input.safePath ?? null,
+        p_safe_display_path: input.safeDisplayPath ?? "",
         p_destination_fingerprint: input.destinationFingerprint,
         p_fingerprint_algorithm: input.fingerprintAlgorithm,
         p_fingerprint_key_version: input.fingerprintKeyVersion,
         p_summary_policy_version: input.summaryPolicyVersion,
+        p_discovery_state: input.discoveryState,
+        p_discovery_policy_version: input.discoveryPolicyVersion,
         p_canonical_base_url: input.canonicalBaseUrl,
       }, { detectCodeCollision: true });
+    },
+    async listPublicLinks(input) {
+      return callRpc("list_public_links_v1", { p_base_url: input.baseUrl, p_limit: input.limit });
+    },
+    async publicLinkLookup(input) {
+      return callRpc("public_link_lookup_v1", { p_code: input.code, p_base_url: input.baseUrl });
+    },
+    async adminSetDiscovery(input) {
+      return callRpc("admin_set_discovery_v1", {
+        p_code: input.code,
+        p_decision: input.decision,
+        p_actor: input.actor,
+        p_detail: input.detail,
+      });
     },
     async consumeRateLimit(input) {
       return callRpc("consume_rate_limit_v1", {

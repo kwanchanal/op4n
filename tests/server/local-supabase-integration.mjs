@@ -166,6 +166,7 @@ assert.deepEqual(Object.keys(publicBody).sort(), [
   "canonicalOpenUrl",
   "canonicalShortUrl",
   "displayTitle",
+  "publicDiscovery",
   "safeDestinationSummary",
 ].sort());
 assert.equal(publicBody.safeDestinationSummary.origin, "https://example.com");
