@@ -127,6 +127,7 @@ jobs:
           HMAC_VERSION: ${{ secrets.DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT }}
           INTERNAL_SERVICE_CREDENTIAL: ${{ secrets.INTERNAL_SERVICE_CREDENTIAL }}
           FOUNDER_SUBJECT_ALLOWLIST: ${{ vars.FOUNDER_SUBJECT_ALLOWLIST }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
         run: |
           [[ "$SUPABASE_PROJECT_REF" =~ ^[a-z0-9]{20}$ ]] || { echo "invalid project ref shape"; exit 1; }
           [[ "$FOUNDER_SUBJECT_ALLOWLIST" =~ ^[0-9a-f-]{36}(,[0-9a-f-]{36})*$ ]] || { echo "FOUNDER_SUBJECT_ALLOWLIST variable is missing or malformed"; exit 1; }
@@ -144,6 +145,8 @@ jobs:
             echo "FOUNDER_AUTH_ISSUER=https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1"
             echo "FOUNDER_AUTH_AUDIENCE=authenticated"
             echo "FOUNDER_SUBJECT_ALLOWLIST=$FOUNDER_SUBJECT_ALLOWLIST"
+            echo "OP4N_RELEASE_SHA=$RELEASE_SHA"
+            echo "OP4N_CONFIG_VERSION=staging-r1"
           } > "$secrets_file"
           npx --yes "$SUPABASE_CLI" secrets set --remote="$SUPABASE_PROJECT_REF" --env-file "$secrets_file" --yes
       - name: Deploy the op4n-api Edge Function
@@ -214,6 +217,7 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           RELEASE_SHA: ${{ inputs.release_sha }}
+          INTERNAL_SERVICE_CREDENTIAL: ${{ secrets.INTERNAL_SERVICE_CREDENTIAL }}
         run: node tests/staging-smoke.mjs
       - name: Record deployment state
         env:

@@ -14,7 +14,7 @@ search-engine indexing of link-card data. Feature Inventory Order 79.
 | `admin.html` | No | `noindex, nofollow` meta tag and `Disallow: /admin` in `robots.txt`. |
 | Short host `op4n.me` (redirects, not-found and unavailable pages) | No | The Worker sends `X-Robots-Tag: noindex, nofollow` on every response and serves `robots.txt` with `Disallow: /`. |
 | Unlisted, inactive, withheld, or sensitive links | No | Never listed or rendered on any indexable page. |
-| `discover.html`, `showcase/*` | PENDING | Follows the launch decision in Order 95. |
+| `discover.html`, `showcase/*` | Not served | Founder decision (Order 95): excluded from the R1 release artifact, navigation, and sitemap, so direct URLs return 404. Source stays in the repository. |
 | Any Staging host | No | The deploy replaces `robots.txt` with `Disallow: /`, removes `sitemap.xml`, and adds `X-Robots-Tag: noindex, nofollow` to every page via `_headers`. |
 
 Checks: `tests/prototype-smoke.mjs` asserts the meta tags on `latest.html`

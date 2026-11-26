@@ -1,5 +1,6 @@
 import { MAX_CODE_ATTEMPTS } from "./canonical-code.mjs";
 import { hmacSha256Hex, sha256Hex } from "./crypto-values.mjs";
+import { TIMEOUTS, withTimeout } from "./timeouts.mjs";
 
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -29,6 +30,7 @@ export function createLinkHandler(dependencies) {
     destinationHmacKey,
     fingerprintKeyVersion,
     requestId = () => crypto.randomUUID(),
+    safetyTimeoutMs = TIMEOUTS.SAFETY_MS,
   } = dependencies;
 
   return async function handle(request) {
@@ -182,7 +184,8 @@ export function createLinkHandler(dependencies) {
 
     let safety;
     try {
-      safety = await safetyPort.decide({ destinationUrl: destination.normalizedUrl });
+      // A slow or down provider fails closed: no link is created.
+      safety = await withTimeout(safetyPort.decide({ destinationUrl: destination.normalizedUrl }), safetyTimeoutMs, "safety");
     } catch {
       await releaseReservation();
       return dependencyUnavailable(id, headers);

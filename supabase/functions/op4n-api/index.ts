@@ -10,12 +10,16 @@ import { createFeatureFlagReader } from "../_shared/feature-flags.mjs";
 import { createPostgresRateLimitGate, resolveRateLimits } from "../_shared/rate-limit.mjs";
 import {
   createClickHandler,
+  createHealthHandlers,
   createNotificationClaimHandler,
   createNotificationCompleteHandler,
   createRedirectLookupHandler,
 } from "../_shared/internal-handlers.mjs";
 import { createPublicReadHandlers } from "../_shared/public-read-handlers.mjs";
 import { createReportHandler } from "../_shared/report-handler.mjs";
+import { hmacSha256Hex } from "../_shared/crypto-values.mjs";
+import { createLogger } from "../_shared/log.mjs";
+import { TIMEOUTS } from "../_shared/timeouts.mjs";
 import { routeOperation } from "../_shared/router.mjs";
 import { createPostgrestPersistence } from "../_shared/postgrest-persistence.mjs";
 import { resolveRuntimeModes } from "../_shared/runtime-modes.mjs";
@@ -30,6 +34,7 @@ const runtimeModes = resolveRuntimeModes({
   rateLimitMode: Deno.env.get("OP4N_RATE_LIMIT_MODE"),
 });
 const localMode = environment === "local";
+const logger = createLogger({ service: "op4n-api", environment });
 const hmacMaterial = Deno.env.get("DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT");
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ||
   (localMode
@@ -126,7 +131,7 @@ const adminRoute = createAdminGate({
     ? createJwksKeyStore({
       loadJwks: async () => {
         const response = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`, {
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(TIMEOUTS.JWKS_MS),
         });
         if (!response.ok) throw new Error(`JWKS returned ${response.status}`);
         return response.json();
@@ -134,6 +139,12 @@ const adminRoute = createAdminGate({
     })
     : null,
   allowedOrigins,
+  log: ({ event, requestId, status, ...fields }) => logger[status >= 500 ? "error" : status >= 400 ? "warn" : "info"](event, {
+    ...fields,
+    requestId,
+    status,
+    outcome: status < 400 ? "ok" : "denied",
+  }),
 });
 
 const admin = createAdminHandlers({
@@ -144,7 +155,24 @@ const admin = createAdminHandlers({
   environment,
 });
 
+const health = createHealthHandlers({
+  credential: internalCredential,
+  persistence,
+  environment,
+  releaseSha: Deno.env.get("OP4N_RELEASE_SHA") || "",
+  configVersion: Deno.env.get("OP4N_CONFIG_VERSION") || "",
+  // Required configuration for the environment's real adapters.
+  environmentReady: Boolean(hmacMaterial && internalCredential && supabaseSecretKey) &&
+    (environment !== "production" || (runtimeModes.safety === "real" && runtimeModes.rateLimit === "real")),
+  frontendOrigin: environment === "production" ? "https://op4n.com" : "https://staging.op4n.com",
+  destinationHmacKey: hmacBytes,
+  hmac: hmacSha256Hex,
+});
+
 const handlers = {
+  getEnvironmentLiveness: health.live,
+  getEnvironmentReadiness: health.ready,
+  ensureSyntheticLink: health.ensureSynthetic,
   createGuestCanonicalLink: createHandler,
   resolveCanonicalRedirect: createRedirectLookupHandler({ credential: internalCredential, persistence }),
   recordRedirectClick: createClickHandler({ credential: internalCredential, persistence }),
@@ -176,15 +204,17 @@ Deno.serve(async (request) => {
   const operation = routeOperation(new URL(request.url).pathname, request.method) || "createGuestCanonicalLink";
   try {
     const response = await handlers[operation](request);
-    console.info(JSON.stringify({
+    const status = response.status;
+    logger[status >= 500 ? "error" : status >= 400 ? "warn" : "info"]("api_request", {
       requestId: response.headers.get("X-Request-ID"),
-      status: response.status,
+      outcome: status >= 500 ? "error" : status >= 400 ? "rejected" : "ok",
+      status,
       operation,
-    }));
+    });
     return response;
   } catch {
     const requestId = crypto.randomUUID();
-    console.error(JSON.stringify({ requestId, status: 500, operation }));
+    logger.error("api_unhandled_error", { requestId, outcome: "error", status: 500, operation });
     return new Response(JSON.stringify({
       error: {
         code: "INTERNAL_ERROR",

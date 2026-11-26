@@ -6,12 +6,21 @@
 // After a GET redirect, one minimal click event is recorded via waitUntil so
 // analytics never delays or changes the 302. The destination is never logged.
 
+import { createLogger } from "../../../supabase/functions/_shared/log.mjs";
+import { TIMEOUTS } from "../../../supabase/functions/_shared/timeouts.mjs";
+
+const loggers = new Map();
+function loggerFor(env) {
+  const environment = env?.OP4N_ENVIRONMENT || "unknown";
+  if (!loggers.has(environment)) loggers.set(environment, createLogger({ service: "redirect-worker", environment }));
+  return loggers.get(environment);
+}
+
 const CODE_PATTERN = /^\/([A-Za-z0-9]{6,32})$/;
-// Supabase Edge Function cold boots after idle or deploy measured ~2.2 s on
-// Staging; a tighter bound turned every cold start into a 503 for an active
-// link. 5 s still fails closed well before the Worker wall-clock limit.
-const LOOKUP_TIMEOUT_MS = 5000;
-const CLICK_TIMEOUT_MS = 3000;
+// Bounds live in supabase/functions/_shared/timeouts.mjs (Order 85). A cold
+// Edge Function measured ~2.2 s on Staging, so the lookup bound is 5 s.
+const LOOKUP_TIMEOUT_MS = TIMEOUTS.REDIRECT_LOOKUP_MS;
+const CLICK_TIMEOUT_MS = TIMEOUTS.CLICK_MS;
 
 const SECURITY_HEADERS = Object.freeze({
   "Cache-Control": "no-store",
@@ -143,7 +152,7 @@ async function recordClick(event, env, fetchImpl) {
       // One retry with the same eventId; the API never double counts it.
       await send();
     } catch {
-      console.warn(JSON.stringify({ event: "click_record_failed", code: event.canonicalCode }));
+      loggerFor(env).warn("click_record_failed", { outcome: "error", code: event.canonicalCode, requestId: event.eventId });
     }
   }
 }
@@ -177,7 +186,7 @@ export async function handleRequest(request, env, ctx, { fetchImpl = fetch, now 
   try {
     decision = await lookup(code, env, fetchImpl);
   } catch {
-    console.warn(JSON.stringify({ event: "redirect_lookup_failed", code }));
+    loggerFor(env).error("redirect_lookup_failed", { outcome: "error", code });
     return htmlResponse("serviceUnavailable", method, env, { "Retry-After": "5" });
   }
 
@@ -185,7 +194,7 @@ export async function handleRequest(request, env, ctx, { fetchImpl = fetch, now 
   if (decision?.decision === "disabled") return htmlResponse("unavailable", method, env);
   if (decision?.decision !== "redirect" || decision.canonicalCode !== code ||
       !isHttpUrl(decision.fullDestinationUrl) || decision.destinationVersion !== 1) {
-    console.warn(JSON.stringify({ event: "redirect_integrity_failed", code }));
+    loggerFor(env).error("redirect_integrity_failed", { outcome: "error", code });
     return htmlResponse("serviceUnavailable", method, env, { "Retry-After": "5" });
   }
 

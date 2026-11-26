@@ -5,6 +5,8 @@
 // failed. The digest contains short codes, reason categories, counts, and
 // times only: never a destination, report free text, or reporter data.
 
+import { createLogger } from "../../../supabase/functions/_shared/log.mjs";
+
 const MAX_LINES = 50;
 
 function utc(iso) {
@@ -65,7 +67,12 @@ async function callInternal(env, fetchImpl, path, body) {
 
 // Returns a summary for logs and tests. Throws only when the API is unreachable;
 // the outbox then keeps the rows for the next run.
-export async function runDigest(env, { fetchImpl = fetch, send, now = () => new Date(), log = console } = {}) {
+export async function runDigest(env, {
+  fetchImpl = fetch,
+  send,
+  now = () => new Date(),
+  log = createLogger({ service: "notifier-worker", environment: env?.OP4N_ENVIRONMENT }),
+} = {}) {
   const claimed = await callInternal(env, fetchImpl, "/api/v1/internal/notifications/claim", {});
   if (!claimed.batchId) return { outcome: "empty" };
 
@@ -83,14 +90,14 @@ export async function runDigest(env, { fetchImpl = fetch, send, now = () => new 
     await send(env.NOTIFY_FROM, env.NOTIFY_TO, raw);
   } catch (error) {
     outcome = "failed";
-    log.error(JSON.stringify({ event: "founder_notification_send_failed", batchId: claimed.batchId, reason: String(error?.message || error).slice(0, 120) }));
+    log.error("founder_notification_send_failed", { outcome: "error", requestId: claimed.batchId, reason: String(error?.message || error) });
   }
   const completed = await callInternal(env, fetchImpl, "/api/v1/internal/notifications/complete", { batchId: claimed.batchId, outcome });
   if (completed.exhausted > 0) {
     // Picked up by the monitoring alert (card "Create production dashboards and actionable alerts").
-    log.error(JSON.stringify({ event: "founder_notification_exhausted", batchId: claimed.batchId, rows: completed.exhausted }));
+    log.error("founder_notification_exhausted", { outcome: "error", requestId: claimed.batchId, rows: completed.exhausted });
   }
-  log.info(JSON.stringify({ event: "founder_notification_digest", outcome, events: claimed.events, groups: claimed.entries.length }));
+  log.info("founder_notification_digest", { outcome, requestId: claimed.batchId, events: claimed.events, groups: claimed.entries.length });
   return { outcome, events: claimed.events, exhausted: completed.exhausted };
 }
 

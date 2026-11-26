@@ -905,6 +905,40 @@ paths:
         '415': { $ref: '#/components/responses/InternalUnsupportedMediaType' }
         '500': { $ref: '#/components/responses/InternalServerError' }
         '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
+  /api/v1/internal/synthetic/ensure:
+    post:
+      tags: [Operations]
+      operationId: ensureSyntheticLink
+      summary: Create this environment's synthetic monitoring link once (idempotent)
+      description: >-
+        SYNTHETIC1 redirects to the frontend so external monitors exercise DNS,
+        the Worker, the lookup, and Postgres. It is never counted as a click and
+        never appears in Latest Links or search.
+      security:
+        - InternalServiceCredential: []
+      x-access-class: environment-service
+      x-idempotency: naturally-idempotent
+      x-rate-limit-class: operational-health
+      x-data-classification: operational
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: The synthetic link exists.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [canonicalCode, created]
+                properties:
+                  canonicalCode: { type: string, const: SYNTHETIC1 }
+                  created: { type: boolean }
+        '401': { $ref: '#/components/responses/InternalUnauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/InternalDependencyUnavailable' }
   /api/v1/internal/health/live:
     get:
       tags: [Operations]

@@ -127,7 +127,9 @@ export function createAdminGate({
   subjectAllowlist,
   keyStore,
   allowedOrigins,
-  log = (entry) => console.info(JSON.stringify(entry)),
+  // Receives {event, operation, requestId, actor, status, code}; index.ts
+  // routes it to the structured logger (log.mjs).
+  log = () => {},
   now = () => Date.now(),
   requestId = () => crypto.randomUUID(),
 }) {

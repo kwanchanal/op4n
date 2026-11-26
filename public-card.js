@@ -46,7 +46,7 @@
       id: "alias",
       label: "Custom alias",
       icon: "ink_pen",
-      description: "Registered owners will be able to add a memorable custom alias to a link they own. An alias is a renewable lease that points to the owned link; the original short link keeps working.",
+      description: "Registered owners will be able to add a memorable custom alias to a link they own. An alias is a renewable lease that points to the owned link, free and renewed manually during the beta; the original short link keeps working.",
     }),
     Object.freeze({
       id: "analytics",
