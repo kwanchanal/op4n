@@ -54,7 +54,7 @@ jobs:
       - name: Install Playwright browsers (Chromium, Firefox, WebKit)
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run release journeys and axe-core checks in three browsers (mock adapter)
-        run: npx playwright test
+        run: npx playwright test --workers=1
       - name: Build the immutable release candidate and sanitized manifest
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node tests/release-artifact.mjs .ci-artifacts "${{ github.sha }}"
