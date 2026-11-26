@@ -32,8 +32,8 @@ test("backend code only fetches configured internal bases", async () => {
       const text = await readFile(join(root, file), "utf8");
       for (const match of text.matchAll(/\b(fetch|fetchImpl|doFetch)\s*\(\s*([^,)]*)/g)) {
         const firstArgument = match[2].trim();
-        // Skip method definitions such as `fetch(request, env, ctx) {`.
-        if (/^request$/.test(firstArgument) && text.slice(match.index).match(/^\w+\s*\([^)]*\)\s*\{/)) continue;
+        // Skip method definitions such as `fetch(request, env, ctx) {` or `fetch() {`.
+        if (/^(request)?$/.test(firstArgument) && text.slice(match.index).match(/^\w+\s*\([^)]*\)\s*\{/)) continue;
         calls += 1;
         if (!ALLOWED_TARGETS.some((target) => firstArgument.includes(target))) {
           offenders.push(`${file}: ${match[0]}`);
