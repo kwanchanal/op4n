@@ -15,6 +15,14 @@ crons = ["*/5 * * * *"]
 [[env.staging.send_email]]
 name = "NOTIFY_EMAIL"
 
+# Persist Worker logs (event names, codes, request IDs; never destinations or addresses).
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1
+
+[env.staging.observability.logs]
+invocation_logs = true
+
 [env.staging.vars]
 OP4N_ENVIRONMENT = "staging"
 FRONTEND_ORIGIN = "https://staging.op4n.com"
