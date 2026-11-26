@@ -12,8 +12,18 @@
   const panels = ["unavailablePanel", "signInForm", "enrollForm", "challengeForm", "sessionPanel"];
   const state = { client: null, enrollFactorId: null, busy: false };
 
+  const titles = {
+    unavailablePanel: "Admin unavailable",
+    signInForm: "Admin sign in",
+    enrollForm: "Set up authenticator",
+    challengeForm: "Verify it’s you",
+    sessionPanel: "Admin",
+  };
+
   function show(panelId) {
     for (const id of panels) $(id).hidden = id !== panelId;
+    $("adminTitle").textContent = titles[panelId];
+    $("adminIntro").hidden = panelId === "sessionPanel";
     $("signOutButton").hidden = !state.client || panelId === "signInForm" || panelId === "unavailablePanel";
     const first = $(panelId).querySelector("input");
     if (first) first.focus();
@@ -126,7 +136,7 @@
 
   function init() {
     const env = config.environment || "local";
-    $("adminEnvironment").textContent = env === "production" ? "Production" : `Environment: ${env}`;
+    $("adminEnvironment").textContent = env.charAt(0).toUpperCase() + env.slice(1);
     $("adminEnvironment").dataset.env = env;
     if (!config.authUrl || !config.publishableKey || !config.apiBaseUrl || !window.supabase?.createClient) {
       show("unavailablePanel");
