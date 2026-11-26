@@ -219,6 +219,14 @@ jobs:
           RELEASE_SHA: ${{ inputs.release_sha }}
           INTERNAL_SERVICE_CREDENTIAL: ${{ secrets.INTERNAL_SERVICE_CREDENTIAL }}
         run: node tests/staging-smoke.mjs
+      - name: Run release journeys against Staging (Chromium)
+        # Waits out the smoke test's rate-limit burst so creation journeys see
+        # a fresh per-minute window. Three-browser coverage runs in CI (mock).
+        run: |
+          sleep 65
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+          E2E_BASE_URL=https://staging.op4n.com E2E_SHORT_ORIGIN=https://staging.op4n.me npx playwright test --project=chromium --workers=1
       - name: Record deployment state
         env:
           RELEASE_SHA: ${{ inputs.release_sha }}
