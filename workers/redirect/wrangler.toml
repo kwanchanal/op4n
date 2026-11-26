@@ -10,6 +10,14 @@ workers_dev = false
 name = "op4n-redirect-staging"
 routes = [{ pattern = "staging.op4n.me/*", zone_name = "op4n.me" }]
 
+# Persist Worker logs (event names, codes, request IDs; never destinations or addresses).
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1
+
+[env.staging.observability.logs]
+invocation_logs = true
+
 [env.staging.vars]
 OP4N_ENVIRONMENT = "staging"
 FRONTEND_ORIGIN = "https://staging.op4n.com"
