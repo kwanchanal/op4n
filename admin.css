@@ -1,81 +1,118 @@
-:root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --muted-foreground: #737373;
-  --border: #e5e5e5;
-  --primary: #171717;
-  --primary-foreground: #fafafa;
-  --destructive: #e7000b;
-  --ring: #a1a1a1;
+/* Admin page layout only. Components (top-banner, main, topbar, form-card,
+   field, cta, guest-link-disclosure, form-status) come from styles.css. */
+
+.admin-layout {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 48px;
 }
 
-* { box-sizing: border-box; }
+.admin-main {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  max-height: none;
+}
 
-body {
+.admin-main .main-scroll {
+  overflow: visible;
+  height: auto;
+  padding: 12px 24px 24px;
+}
+
+.admin-main .page-title-group .material-symbols-outlined {
+  font-size: 26px;
+}
+
+.admin-main h1.page-title {
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.admin-env-badge {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.admin-env-badge[data-env="staging"] {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.admin-card[hidden] {
+  display: none;
+}
+
+.admin-step {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
   line-height: 1.5;
 }
 
-.admin-shell {
-  max-width: 440px;
-  margin: 0 auto;
-  padding: 32px 16px 48px;
-}
-
-.admin-header h1 { margin: 0; font-size: 1.5rem; }
-.admin-env { margin: 4px 0 0; color: var(--muted-foreground); font-size: 0.875rem; }
-.admin-env[data-env="staging"]::before { content: "● "; color: #d97706; }
-
-.admin-status { min-height: 1.5em; margin: 16px 0; }
-.admin-status[data-tone="error"] { color: var(--destructive); }
-
-.admin-panel {
-  display: grid;
-  gap: 8px;
-  padding: 20px;
-  border: 1px solid var(--border);
+.admin-qr {
+  justify-self: center;
   border-radius: 12px;
-}
-.admin-panel[hidden] { display: none; }
-.admin-panel h2 { margin: 0 0 4px; font-size: 1.125rem; }
-.admin-panel p { margin: 0; }
-
-label { font-weight: 600; font-size: 0.875rem; }
-
-input {
-  width: 100%;
-  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font: inherit;
+  background: #fff;
 }
 
-button {
-  margin-top: 8px;
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font: inherit;
+.admin-secret {
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.admin-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.admin-facts dt {
+  color: var(--muted);
+}
+
+.admin-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.form-status[data-tone="error"] {
+  color: var(--destructive);
+}
+
+.admin-signout {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
-button:disabled { opacity: 0.6; cursor: progress; }
-.admin-secondary { background: transparent; color: var(--foreground); border: 1px solid var(--border); }
 
-input:focus-visible, button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+.admin-signout[hidden] {
+  display: none;
 }
 
-#enrollQr { justify-self: center; background: #fff; }
-.admin-secret code { word-break: break-all; }
-
-.admin-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
-.admin-facts dt { color: var(--muted-foreground); }
-.admin-facts dd { margin: 0; }
-.admin-note { color: var(--muted-foreground); font-size: 0.875rem; }
+.admin-signout .material-symbols-outlined {
+  font-size: 18px;
+}

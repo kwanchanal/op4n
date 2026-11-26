@@ -5,63 +5,113 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="no-referrer" />
-    <title>Op4n Admin</title>
+    <title>Admin · OP4N.COM</title>
     <link rel="icon" type="image/svg+xml" href="favicon/op4n-star.svg" />
-    <link rel="stylesheet" href="admin.css?v=r1-admin" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200"
+    />
+    <style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+    <link rel="stylesheet" href="styles.css?v=r1-batch-a" />
+    <link rel="stylesheet" href="admin.css?v=r1-admin-2" />
   </head>
-  <body>
-    <main class="admin-shell">
-      <header class="admin-header">
-        <h1>Op4n Admin</h1>
-        <p class="admin-env" id="adminEnvironment" aria-live="polite"></p>
-      </header>
+  <body class="dashboard admin-page">
+    <div class="top-banner">
+      <span class="banner-text">OP4N.COM · Admin</span>
+    </div>
 
-      <p class="admin-status" id="adminStatus" role="status" aria-live="polite"></p>
+    <div class="admin-layout">
+      <main class="main admin-main">
+        <div class="main-scroll">
+          <header class="topbar">
+            <div class="page-title-group">
+              <span class="material-symbols-outlined" aria-hidden="true">shield_person</span>
+              <h1 class="page-title" id="adminTitle">Admin sign in</h1>
+            </div>
+            <span class="admin-env-badge" id="adminEnvironment"></span>
+          </header>
 
-      <section class="admin-panel" id="unavailablePanel" hidden>
-        <h2>Admin is not available here</h2>
-        <p>This environment has no Admin sign-in configured.</p>
-      </section>
+          <section class="intro-copy">
+            <p id="adminIntro">Founder access only. Password plus an authenticator app code.</p>
+          </section>
 
-      <form class="admin-panel" id="signInForm" hidden novalidate>
-        <h2>Sign in</h2>
-        <label for="adminEmail">Email</label>
-        <input id="adminEmail" name="email" type="email" autocomplete="username" required />
-        <label for="adminPassword">Password</label>
-        <input id="adminPassword" name="password" type="password" autocomplete="current-password" required />
-        <button type="submit" id="signInSubmit">Sign in</button>
-      </form>
+          <section class="form-card admin-card" id="unavailablePanel" hidden>
+            <aside class="guest-link-disclosure">
+              <span class="material-symbols-outlined" aria-hidden="true">info</span>
+              <p>Admin sign-in is not configured in this environment.</p>
+            </aside>
+          </section>
 
-      <form class="admin-panel" id="enrollForm" hidden novalidate>
-        <h2>Set up your authenticator</h2>
-        <p>Scan this code with an authenticator app, then enter the 6-digit code it shows.</p>
-        <img id="enrollQr" alt="Authenticator setup QR code" width="200" height="200" />
-        <p class="admin-secret">Can’t scan? Enter this key: <code id="enrollSecret"></code></p>
-        <label for="enrollCode">6-digit code</label>
-        <input id="enrollCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
-        <button type="submit" id="enrollSubmit">Verify and finish setup</button>
-      </form>
+          <section class="form-card admin-card" id="signInForm" hidden>
+            <form class="link-entry-form" novalidate>
+              <div class="field">
+                <label for="adminEmail">Email</label>
+                <input id="adminEmail" name="email" type="email" autocomplete="username" required placeholder="you@op4n.com" />
+              </div>
+              <div class="field">
+                <label for="adminPassword">Password</label>
+                <input id="adminPassword" name="password" type="password" autocomplete="current-password" required />
+              </div>
+              <button class="cta" type="submit" id="signInSubmit">Sign in</button>
+            </form>
+          </section>
 
-      <form class="admin-panel" id="challengeForm" hidden novalidate>
-        <h2>Authenticator code</h2>
-        <label for="challengeCode">6-digit code</label>
-        <input id="challengeCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
-        <button type="submit" id="challengeSubmit">Verify</button>
-      </form>
+          <section class="form-card admin-card" id="enrollForm" hidden>
+            <form class="link-entry-form" novalidate>
+              <p class="form-cta-note admin-step">Step 2 of 2 · Set up your authenticator</p>
+              <p class="admin-help">Scan this code with Google Authenticator or another authenticator app, then enter the 6-digit code it shows.</p>
+              <img class="admin-qr" id="enrollQr" alt="Authenticator setup QR code" width="200" height="200" />
+              <aside class="guest-link-disclosure">
+                <span class="material-symbols-outlined" aria-hidden="true">key</span>
+                <p>Can’t scan? Enter this key in the app: <code class="admin-secret" id="enrollSecret"></code></p>
+              </aside>
+              <div class="field">
+                <label for="enrollCode">6-digit code</label>
+                <input id="enrollCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="123456" />
+              </div>
+              <button class="cta" type="submit" id="enrollSubmit">Verify and finish setup</button>
+            </form>
+          </section>
 
-      <section class="admin-panel" id="sessionPanel" hidden>
-        <h2>Admin session</h2>
-        <dl class="admin-facts">
-          <dt>Environment</dt><dd id="sessionEnvironment"></dd>
-          <dt>Assurance</dt><dd id="sessionAssurance"></dd>
-          <dt>Recent sign-in</dt><dd id="sessionRecent"></dd>
-          <dt>Expires</dt><dd id="sessionExpires"></dd>
-        </dl>
-        <p class="admin-note">Moderation tools arrive with the Admin lookup, queue, disable, and re-enable cards.</p>
-      </section>
+          <section class="form-card admin-card" id="challengeForm" hidden>
+            <form class="link-entry-form" novalidate>
+              <p class="form-cta-note admin-step">Step 2 of 2 · Authenticator code</p>
+              <div class="field">
+                <label for="challengeCode">6-digit code</label>
+                <input id="challengeCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="123456" />
+              </div>
+              <button class="cta" type="submit" id="challengeSubmit">Verify</button>
+            </form>
+          </section>
 
-      <button type="button" class="admin-secondary" id="signOutButton" hidden>Sign out</button>
-    </main>
+          <section class="form-card admin-card" id="sessionPanel" hidden>
+            <dl class="admin-facts">
+              <dt>Environment</dt><dd id="sessionEnvironment"></dd>
+              <dt>Assurance</dt><dd id="sessionAssurance"></dd>
+              <dt>Recent sign-in</dt><dd id="sessionRecent"></dd>
+              <dt>Session expires</dt><dd id="sessionExpires"></dd>
+            </dl>
+            <aside class="guest-link-disclosure">
+              <span class="material-symbols-outlined" aria-hidden="true">construction</span>
+              <p>Link lookup, the report queue, and disable and re-enable controls will appear here as those Admin cards ship.</p>
+            </aside>
+          </section>
+
+          <div class="form-feedback">
+            <p class="form-status" id="adminStatus" role="status" aria-live="polite"></p>
+          </div>
+
+          <button type="button" class="admin-signout" id="signOutButton" hidden>
+            <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+            Sign out
+          </button>
+        </div>
+      </main>
+    </div>
 
     <script src="config/runtime-config.js?v=r1-admin"></script>
     <script
@@ -69,6 +119,6 @@
       integrity="sha384-rwykjmWNwVxboyFmvK9OXN0wj9hnMHA2aAHtits54DuACyCq0M2PrSNxhRb+hvXT"
       crossorigin="anonymous"
     ></script>
-    <script src="admin.js?v=r1-admin"></script>
+    <script src="admin.js?v=r1-admin-2"></script>
   </body>
 </html>
