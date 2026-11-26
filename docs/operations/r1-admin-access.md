@@ -1,6 +1,6 @@
 # R1 Admin access: MFA, least privilege, and break-glass
 
-- Status: Implemented on Staging (Feature Inventory "Require MFA and least privilege for Admin access")
+- Status: Implemented and rehearsed on Staging (Feature Inventory "Require MFA and least privilege for Admin access")
 - Owner and sole Admin: Founder
 - Last updated: 2026-11-26
 - Related: [secrets and access](../security/r1-secrets-and-access.md), [environment strategy](../architecture/r1-environment-strategy.md), [moderation policy](r1-moderation-policy.md), [OpenAPI](../api/r1-openapi.yaml)
@@ -54,4 +54,9 @@ Function is unusable during an abuse incident.
 
 | Date | Environment | Steps rehearsed | Result |
 | --- | --- | --- | --- |
-| _pending_ | Staging | Remove factor, re-enroll, sign in at aal2 | _to record_ |
+| 2026-11-26 | Staging | Removed every MFA factor from the founder user in the dashboard (Danger zone → Remove MFA factors), signed out, signed in at `/admin`, enrolled a new TOTP factor, reached the aal2 Admin session | Passed. The old authenticator entry no longer works. |
+
+Finding: removing a factor does not end existing sessions. An access token that
+was already issued keeps its `aal2` claim until it expires (at most 1 hour). For a
+suspected compromise, step 4 (sign the user out of all sessions) is mandatory, not
+optional.
