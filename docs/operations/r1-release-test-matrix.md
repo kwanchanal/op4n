@@ -56,3 +56,18 @@ Record results on the release's Feature Inventory card.
 - **NVDA or Narrator + Chrome/Edge** (Windows): same as VoiceOver.
 - **Real devices**: on an iPhone and an Android phone, create a link, open the
   short link, and check that the promotional sheet does not cover the form.
+
+## Known issue: headless Firefox on CI
+
+Since 2026-11-26, headless Firefox's content process crashes ("Page crashed")
+on Linux GitHub runners during the interactive journeys on index.html and
+latest.html. Diagnostic runs showed the same steps (fill, typing, axe scans)
+pass in isolated contexts. Disabling trace screenshots, GPU compositing,
+backdrop-filter, and parallel workers did not help. Chromium and WebKit pass
+everything.
+
+Until it is resolved, the Firefox project skips the journeys tagged
+`@firefox-ci-crash` and still runs the keyboard, legal-page, and responsive
+journeys. Run those five journeys by hand in desktop Firefox before each
+release and record the result. Order 89 stays in Review until Firefox runs
+the full suite in CI.
