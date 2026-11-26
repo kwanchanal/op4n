@@ -306,6 +306,43 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/session:
+    get:
+      tags: [Admin]
+      operationId: getAdminSession
+      summary: Confirm an allowlisted founder session at aal2
+      description: >-
+        Verifies the Supabase Auth user JWT (ES256 against the environment JWKS,
+        issuer, audience), the founder subject allowlist, and aal2. Returns no
+        subject identifier. Missing Admin configuration fails closed with 503
+        FEATURE_UNAVAILABLE.
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-idempotency: not-applicable
+      x-rate-limit-class: admin-read
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      responses:
+        '200':
+          description: Authorized founder session.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSession' }
+              example:
+                admin: true
+                environment: staging
+                assuranceLevel: aal2
+                recentAuth: true
+                expiresAt: '2026-11-26T11:00:00.000Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/admin/links/{code}:
     parameters:
       - $ref: '#/components/parameters/CanonicalCodePath'
@@ -1048,6 +1085,8 @@ components:
             - PAYLOAD_TOO_LARGE
             - UNAUTHORIZED
             - FORBIDDEN
+            - MFA_REQUIRED
+            - REAUTH_REQUIRED
             - DEPENDENCY_UNAVAILABLE
             - FEATURE_UNAVAILABLE
             - INTERNAL_ERROR
@@ -1057,6 +1096,18 @@ components:
           type: array
           maxItems: 20
           items: { $ref: '#/components/schemas/ValidationDetail' }
+    AdminSession:
+      type: object
+      additionalProperties: false
+      required: [admin, environment, assuranceLevel, recentAuth, expiresAt]
+      properties:
+        admin: { type: boolean, const: true }
+        environment: { type: string, enum: [local, staging, production] }
+        assuranceLevel: { type: string, const: aal2 }
+        recentAuth:
+          type: boolean
+          description: True when the JWT was issued within 15 minutes; disable and restore require it (else 401 REAUTH_REQUIRED).
+        expiresAt: { type: string, format: date-time }
     ErrorEnvelope:
       type: object
       additionalProperties: false

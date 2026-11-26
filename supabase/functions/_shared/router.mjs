@@ -3,6 +3,7 @@
 const ROUTES = Object.freeze([
   ["/api/v1/internal/redirect-lookup", "resolveCanonicalRedirect"],
   ["/api/v1/internal/clicks", "recordRedirectClick"],
+  ["/api/v1/admin/session", "getAdminSession"],
   ["/api/v1/links", "createGuestCanonicalLink"],
 ]);
 

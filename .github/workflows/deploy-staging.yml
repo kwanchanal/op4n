@@ -126,7 +126,10 @@ jobs:
           HMAC_KEY: ${{ secrets.DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT }}
           HMAC_VERSION: ${{ secrets.DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT }}
           INTERNAL_SERVICE_CREDENTIAL: ${{ secrets.INTERNAL_SERVICE_CREDENTIAL }}
+          FOUNDER_SUBJECT_ALLOWLIST: ${{ vars.FOUNDER_SUBJECT_ALLOWLIST }}
         run: |
+          [[ "$SUPABASE_PROJECT_REF" =~ ^[a-z0-9]{20}$ ]] || { echo "invalid project ref shape"; exit 1; }
+          [[ "$FOUNDER_SUBJECT_ALLOWLIST" =~ ^[0-9a-f-]{36}(,[0-9a-f-]{36})*$ ]] || { echo "FOUNDER_SUBJECT_ALLOWLIST variable is missing or malformed"; exit 1; }
           umask 077
           secrets_file="$(mktemp)"
           trap 'rm -f "$secrets_file"' EXIT
@@ -138,6 +141,9 @@ jobs:
             echo "DESTINATION_FINGERPRINT_HMAC_KEY_CURRENT=$HMAC_KEY"
             echo "DESTINATION_FINGERPRINT_HMAC_VERSION_CURRENT=$HMAC_VERSION"
             echo "INTERNAL_SERVICE_CREDENTIAL=$INTERNAL_SERVICE_CREDENTIAL"
+            echo "FOUNDER_AUTH_ISSUER=https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1"
+            echo "FOUNDER_AUTH_AUDIENCE=authenticated"
+            echo "FOUNDER_SUBJECT_ALLOWLIST=$FOUNDER_SUBJECT_ALLOWLIST"
           } > "$secrets_file"
           npx --yes "$SUPABASE_CLI" secrets set --remote="$SUPABASE_PROJECT_REF" --env-file "$secrets_file" --yes
       - name: Deploy the op4n-api Edge Function
@@ -159,18 +165,10 @@ jobs:
             npx --yes "$WRANGLER_CLI" secret put INTERNAL_SERVICE_CREDENTIAL --config workers/redirect/wrangler.toml --env staging
       - name: Write the Staging runtime configuration
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: |
-          [[ "$SUPABASE_PROJECT_REF" =~ ^[a-z0-9]{20}$ ]] || { echo "invalid project ref shape"; exit 1; }
-          # The only file that differs from the verified artifact; it holds no secret.
-          cat > .ci-artifacts/site/config/runtime-config.js <<EOF
-          window.OP4N_RUNTIME_CONFIG = Object.freeze({
-            environment: "staging",
-            adapter: "http",
-            apiBaseUrl: "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/op4n-api",
-            shortLinkHost: "staging.op4n.me",
-          });
-          EOF
+        # The only file that differs from the verified artifact; it holds no secret.
+        run: node tests/staging-runtime-config.mjs .ci-artifacts/site/config/runtime-config.js
       - name: Publish the frontend artifact to Cloudflare Pages (Staging)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

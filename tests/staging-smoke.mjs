@@ -96,6 +96,20 @@ async function egressAddress(apiOrigin) {
   return text.match(/^ip=(.+)$/m)?.[1]?.trim() ?? "unknown";
 }
 
+export function checkAdminDenied(status, body) {
+  if (status === 401 && body?.error?.code === "UNAUTHORIZED") return [];
+  return [`Admin session without a valid JWT returned ${status} ${body?.error?.code ?? ""}`.trim()];
+}
+
+export function checkSignupDisabled(status, body) {
+  if (status >= 400 && status < 500 && /signup_disabled/i.test(String(body?.error_code ?? body?.code ?? ""))) return [];
+  return [`public sign-up is not disabled (status ${status})`];
+}
+
+export function publishableKeyFrom(text) {
+  return String(text).match(/publishableKey:\s*"([^"]+)"/)?.[1] ?? null;
+}
+
 export function checkRuntimeConfig(text, ref) {
   return /adapter:\s*"http"/.test(text) &&
     text.includes(`https://${ref}.supabase.co/functions/v1/op4n-api`) &&
@@ -135,6 +149,13 @@ function selfTest() {
     [checkPlatformRejectsSpoof(204, new Headers({ "x-request-id": "abc" })).length === 0, false],
     [checkRateLimited({ headers: new Headers({ "retry-after": "42", "ratelimit-remaining": "0" }) }).length === 0, true],
     [checkRateLimited({ headers: new Headers({ "ratelimit-remaining": "0" }) }).length === 0, false],
+    [checkAdminDenied(401, { error: { code: "UNAUTHORIZED" } }).length === 0, true],
+    [checkAdminDenied(200, { admin: true }).length === 0, false],
+    [checkAdminDenied(503, { error: { code: "FEATURE_UNAVAILABLE" } }).length === 0, false],
+    [checkSignupDisabled(422, { error_code: "signup_disabled" }).length === 0, true],
+    [checkSignupDisabled(200, { id: "x" }).length === 0, false],
+    [checkSignupDisabled(400, { error_code: "email_address_invalid" }).length === 0, false],
+    [publishableKeyFrom('publishableKey: "sb_publishable_x",'), "sb_publishable_x"],
     [checkBurstOutcome(null, 1).failures.length === 0, false],
     [checkBurstOutcome(null, 3).inconclusive, true],
     [checkBurstOutcome(null, 3).failures.length === 0, true],
@@ -259,21 +280,39 @@ async function run() {
   // The deployed frontend must select the http adapter and point at this
   // project's API. Pages can take a few seconds to serve a new deployment.
   let configOk = false;
+  let configText = "";
   for (let attempt = 0; attempt < 10 && !configOk; attempt += 1) {
     const response = await fetch(`${STAGING_ORIGIN}/config/runtime-config.js`, { cache: "no-store" })
       .catch(() => null);
-    const text = response?.ok ? await response.text() : "";
-    configOk = checkRuntimeConfig(text, ref);
+    configText = response?.ok ? await response.text() : "";
+    configOk = checkRuntimeConfig(configText, ref);
     if (!configOk) await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   if (!configOk) failures.push("Staging frontend runtime config does not select the http adapter for this project");
+
+  // Admin: no JWT is rejected by the deployed gate (proves it is configured,
+  // not 503), and Supabase Auth refuses public sign-up.
+  const adminEndpoint = `https://${ref}.supabase.co/functions/v1/op4n-api/api/v1/admin/session`;
+  const anonymousAdmin = await fetch(adminEndpoint, { headers: { Origin: STAGING_ORIGIN } });
+  failures.push(...checkAdminDenied(anonymousAdmin.status, await anonymousAdmin.json().catch(() => null)));
+  const publishableKey = publishableKeyFrom(configText);
+  if (!publishableKey) {
+    failures.push("Staging runtime config has no publishable key for Admin sign-in");
+  } else {
+    const signup = await fetch(`https://${ref}.supabase.co/auth/v1/signup`, {
+      method: "POST",
+      headers: { apikey: publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `op4n-smoke-${randomUUID()}@example.com`, password: randomUUID() }),
+    });
+    failures.push(...checkSignupDisabled(signup.status, await signup.json().catch(() => null)));
+  }
 
   if (failures.length) {
     failures.forEach((message) => console.error(`FAIL ${message}`));
     console.error(`request id: ${created.headers.get("x-request-id") ?? "none"}`);
     process.exit(1);
   }
-  console.log("PASS Staging smoke: create, CORS, reports, redirect, spoof rejection, rate limit, and runtime config");
+  console.log("PASS Staging smoke: create, CORS, reports, redirect, spoof rejection, rate limit, runtime config, Admin gate, and disabled sign-up");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
