@@ -21,7 +21,21 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], ...(process.env.E2E_CHROME_CHANNEL ? { channel: process.env.E2E_CHROME_CHANNEL } : {}) } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    {
+      name: "firefox",
+      use: {
+        ...devices["Desktop Firefox"],
+        // Headless Firefox on Linux CI runners crashes rendering these pages
+        // with GPU compositing and backdrop-filter; use software rendering.
+        launchOptions: {
+          firefoxUserPrefs: {
+            "gfx.webrender.software": true,
+            "layers.acceleration.disabled": true,
+            "layout.css.backdrop-filter.enabled": false,
+          },
+        },
+      },
+    },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
 });
