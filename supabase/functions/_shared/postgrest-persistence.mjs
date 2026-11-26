@@ -63,6 +63,34 @@ export function createPostgrestPersistence({ supabaseUrl, secretKey, fetchImpl =
     async resolveRedirect(canonicalCode) {
       return callRpc("resolve_canonical_redirect_v1", { p_code: canonicalCode });
     },
+    async adminFindLink(input) {
+      return callRpc("admin_find_link_v1", { p_code: input.code, p_fingerprint: input.fingerprint });
+    },
+    async adminLinkRecord(code) {
+      return callRpc("admin_link_record_v1", { p_code: code });
+    },
+    async adminRevealDestination(input) {
+      return callRpc("admin_reveal_destination_v1", { p_code: input.code, p_actor: input.actor });
+    },
+    async adminListCases(input) {
+      return callRpc("admin_list_cases_v1", { p_limit: input.limit, p_offset: input.offset });
+    },
+    async adminTransitionCase(input) {
+      return callRpc("admin_transition_case_v1", {
+        p_case_id: input.caseId, p_action: input.action, p_actor: input.actor, p_note: input.note,
+      });
+    },
+    async adminModerateLink(input) {
+      return callRpc("admin_moderate_link_v1", {
+        p_code: input.code,
+        p_action: input.action,
+        p_actor: input.actor,
+        p_reason: input.reasonCode,
+        p_detail: input.reasonDetail,
+        p_key_hash: input.keyHash,
+        p_payload_digest: input.payloadDigest,
+      });
+    },
     async claimNotifications(input) {
       return callRpc("claim_notifications_v1", {
         p_environment: input.environment,

@@ -45,19 +45,45 @@
     return error?.message ? String(error.message).slice(0, 200) : "Something went wrong. Try again.";
   }
 
-  async function callAdmin(path) {
+  async function callAdmin(path, { method = "GET", body, headers = {} } = {}) {
     const { data } = await state.client.auth.getSession();
     const token = data.session?.access_token;
-    if (!token) return { ok: false, code: "UNAUTHORIZED" };
-    const response = await fetch(`${config.apiBaseUrl}${path}`, {
-      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok) {
-      return { ok: false, code: body?.error?.code || `HTTP_${response.status}`, requestId: body?.error?.requestId };
+    if (!token) return { ok: false, status: 401, code: "UNAUTHORIZED" };
+    let response;
+    try {
+      response = await fetch(`${config.apiBaseUrl}${path}`, {
+        method,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...headers,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        cache: "no-store",
+      });
+    } catch {
+      return { ok: false, status: 0, code: "NETWORK_ERROR" };
     }
-    return { ok: true, body };
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        code: payload?.error?.code || `HTTP_${response.status}`,
+        message: payload?.error?.message,
+        requestId: payload?.error?.requestId,
+      };
+    }
+    return { ok: true, status: response.status, body: payload };
+  }
+
+  // Disable and restore need a sign-in within 15 minutes; a fresh password +
+  // authenticator sign-in issues a new token.
+  async function requireReauth() {
+    await state.client.auth.signOut();
+    setStatus("For this action, sign in again with your password and authenticator code.", "error");
+    show("signInForm");
   }
 
   async function showSession() {
@@ -79,6 +105,7 @@
     $("sessionExpires").textContent = new Date(result.body.expiresAt).toLocaleString();
     setStatus("Signed in.");
     show("sessionPanel");
+    window.op4nAdminTools?.start({ callAdmin, requireReauth, setStatus });
   }
 
   async function routeByAssurance() {

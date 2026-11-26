@@ -345,6 +345,226 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/link-lookup:
+    post:
+      tags: [Admin]
+      operationId: findAdminLink
+      summary: Find one link by exact code, exact short URL, or exact full destination
+      description: >-
+        A destination is normalized and matched by its HMAC fingerprint; there
+        is no substring or LIKE search. The query is sent in the body so it never
+        appears in request URLs or access logs.
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-rate-limit-class: admin-read
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      x-idempotency: not-applicable-read-only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 2048 }
+            example:
+              query: op4n.me/R1EXAMPLE
+      responses:
+        '200':
+          description: Exact match result.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [found]
+                properties:
+                  found: { type: boolean }
+                  canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+              example:
+                found: true
+                canonicalCode: R1EXAMPLE
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/links/{code}/reveal:
+    parameters:
+      - $ref: '#/components/parameters/CanonicalCodePath'
+    post:
+      tags: [Admin]
+      operationId: revealAdminDestination
+      summary: Reveal the full destination and append a reveal_destination audit action
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-rate-limit-class: admin-read
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      x-idempotency: not-applicable-audited
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, maxProperties: 0 }
+            example: {}
+      responses:
+        '200':
+          description: Protected full destination; never logged.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [canonicalCode, fullDestinationUrl, auditRecorded]
+                properties:
+                  canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+                  fullDestinationUrl: { type: string, format: uri, pattern: '^https?://' }
+                  auditRecorded: { type: boolean, const: true }
+              example:
+                canonicalCode: R1EXAMPLE
+                fullDestinationUrl: https://example.com/path?q=1
+                auditRecorded: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/cases:
+    get:
+      tags: [Admin]
+      operationId: listAdminCases
+      summary: Open and triaged moderation cases, most severe first, 50 per page
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-rate-limit-class: admin-read
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      x-idempotency: not-applicable-read-only
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 1 }
+      responses:
+        '200':
+          description: One page of the queue. Never includes full destinations.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [page, pageSize, total, items]
+                properties:
+                  page: { type: integer, minimum: 1 }
+                  pageSize: { type: integer, const: 50 }
+                  total: { type: integer, minimum: 0 }
+                  items:
+                    type: array
+                    maxItems: 50
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [caseId, caseState, priority, openedAt, canonicalCode, title, safeDestinationOrigin, lifecycleState, reportCount, reportsByReason, firstReportAt, lastReportAt]
+                      properties:
+                        caseId: { type: string, format: uuid }
+                        caseState: { type: string, enum: [open, triaged] }
+                        priority: { type: string, enum: [S1, S2, S3] }
+                        openedAt: { type: string, format: date-time }
+                        canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
+                        title: { type: [string, 'null'], maxLength: 200 }
+                        safeDestinationOrigin: { type: string }
+                        lifecycleState: { type: string, enum: [active, disabled, deleted] }
+                        reportCount: { type: integer, minimum: 0 }
+                        reportsByReason: { type: [object, 'null'], additionalProperties: { type: integer } }
+                        firstReportAt: { type: [string, 'null'], format: date-time }
+                        lastReportAt: { type: [string, 'null'], format: date-time }
+              example:
+                page: 1
+                pageSize: 50
+                total: 0
+                items: []
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /api/v1/admin/cases/{caseId}/transition:
+    parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Admin]
+      operationId: transitionAdminCase
+      summary: Mark a case triaged or resolve it, with an audited note
+      security:
+        - FounderUserJwt: []
+      x-access-class: founder-admin
+      x-rate-limit-class: admin-mutation
+      x-data-classification: protected-sensitive
+      x-cache-behavior: no-store
+      x-idempotency: state-guarded
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, note]
+              properties:
+                action: { type: string, enum: [triage, resolve] }
+                note: { type: string, minLength: 1, maxLength: 1000 }
+            example:
+              action: resolve
+              note: Reviewed; the destination is a legitimate store.
+      responses:
+        '200':
+          description: Case updated and audited.
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/RequestId' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+            Vary: { $ref: '#/components/headers/VaryOrigin' }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [caseId, caseState, auditRecorded]
+                properties:
+                  caseId: { type: string, format: uuid }
+                  caseState: { type: string, enum: [triaged, closed] }
+                  auditRecorded: { type: boolean, const: true }
+              example:
+                caseId: 00000000-0000-4000-8000-000000000030
+                caseState: closed
+                auditRecorded: true
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/LinkNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /api/v1/admin/links/{code}:
     parameters:
       - $ref: '#/components/parameters/CanonicalCodePath'
@@ -974,32 +1194,61 @@ components:
     AdminLinkRecord:
       type: object
       additionalProperties: false
+      description: >-
+        Founder view of one link. The full destination is not included; it is
+        returned only by revealAdminDestination, which writes an audit action.
       required:
         - canonicalCode
         - title
-        - fullDestinationUrl
+        - safeDestinationOrigin
         - destinationVersion
         - lifecycleState
         - safetyState
         - discoveryState
         - visibility
+        - createdAt
+        - disabledAt
         - aggregateTotalClicks
         - reportCount
+        - reportsByReason
+        - openCase
+        - history
       properties:
         canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
         title: { type: [string, 'null'], maxLength: 200 }
-        fullDestinationUrl:
-          type: string
-          format: uri
-          pattern: '^https?://'
-          description: Protected founder-only value; prohibited in logs and public output.
+        safeDestinationOrigin: { type: string, pattern: '^https?://[^/?#]+$' }
         destinationVersion: { type: integer, const: 1 }
         lifecycleState: { type: string, enum: [active, disabled, deleted] }
         safetyState: { type: string, enum: [pending, approved, blocked] }
         discoveryState: { type: string, enum: [eligible, withheld] }
         visibility: { type: string, enum: [public] }
+        createdAt: { type: string, format: date-time }
+        disabledAt: { type: [string, 'null'], format: date-time }
         aggregateTotalClicks: { type: integer, minimum: 0 }
         reportCount: { type: integer, minimum: 0 }
+        reportsByReason:
+          type: object
+          additionalProperties: { type: integer, minimum: 1 }
+        openCase:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [caseId, caseState, priority, openedAt]
+          properties:
+            caseId: { type: string, format: uuid }
+            caseState: { type: string, enum: [open, triaged] }
+            priority: { type: string, enum: [S1, S2, S3] }
+            openedAt: { type: string, format: date-time }
+        history:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [actionType, reasonCode, reasonDetail, occurredAt]
+            properties:
+              actionType: { type: string, enum: [disable, restore, triage, resolve, note, reveal_destination] }
+              reasonCode: { type: [string, 'null'] }
+              reasonDetail: { type: [string, 'null'], maxLength: 1000 }
+              occurredAt: { type: string, format: date-time }
     ModerationMutationRequest:
       type: object
       additionalProperties: false
@@ -1015,11 +1264,14 @@ components:
     ModerationMutationResult:
       type: object
       additionalProperties: false
-      required: [canonicalCode, lifecycleState, auditRecorded]
+      required: [canonicalCode, lifecycleState, changed, auditRecorded]
       properties:
         canonicalCode: { $ref: '#/components/schemas/CanonicalCode' }
         lifecycleState: { type: string, enum: [active, disabled] }
-        auditRecorded: { type: boolean, const: true }
+        changed:
+          type: boolean
+          description: False when the link was already in the requested state; nothing was written.
+        auditRecorded: { type: boolean }
     RedirectLookupRequest:
       type: object
       additionalProperties: false
@@ -1190,6 +1442,7 @@ components:
             - FORBIDDEN
             - MFA_REQUIRED
             - REAUTH_REQUIRED
+            - SAFETY_HOLD
             - DEPENDENCY_UNAVAILABLE
             - FEATURE_UNAVAILABLE
             - INTERNAL_ERROR

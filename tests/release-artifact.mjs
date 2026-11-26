@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const allowlistPath = "tests/static-site-files.json";
 const permittedRootFiles = new Set([
-  "CNAME", "admin.css", "admin.html", "admin.js", "app.js", "discover.html", "index.html",
+  "CNAME", "admin-tools.js", "admin.css", "admin.html", "admin.js", "app.js", "discover.html", "index.html",
   "shared-sidebar.js", "styles.css",
 ]);
 const permittedDirectories = [
