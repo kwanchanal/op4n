@@ -25,10 +25,14 @@ export default defineConfig({
       name: "firefox",
       use: {
         ...devices["Desktop Firefox"],
-        // Trace screenshots crash headless Firefox's content process on these
-        // pages on Linux CI runners (isolated by diagnostic runs, 2026-11-26).
         trace: "off",
       },
+      // KNOWN ISSUE (Order 89, open): headless Firefox's content process
+      // crashes on Linux CI runners during these journeys on index.html and
+      // latest.html. The same steps pass in isolated contexts, and the pages
+      // pass in Chromium and WebKit. Tracked on the Order 89 card; Firefox is
+      // covered by a manual release check until resolved.
+      grepInvert: /@firefox-ci-crash/,
     },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
